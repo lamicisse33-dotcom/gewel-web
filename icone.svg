@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <title>KHALAM — la balance-antenne</title>
+  <rect width="180" height="180" fill="#0B1020"/>
+  <g fill="none" stroke="#C9A227" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="90" cy="20" r="3.5" fill="#C9A227" stroke="none"/>
+    <path d="M90 27 V66" stroke-width="5"/>
+    <path d="M80 34 H100" stroke-width="4.5"/>
+    <path d="M75 44 H105" stroke-width="4.5"/>
+    <path d="M70 54 H110" stroke-width="4.5"/>
+    <circle cx="90" cy="71" r="5.5" stroke-width="6"/>
+    <path d="M48 82 Q90 66 132 82" stroke-width="7"/>
+    <path d="M48 82 V92" stroke-width="3.5"/><path d="M132 82 V92" stroke-width="3.5"/>
+    <path d="M34 92 H62 L57 105 Q48 110 39 105 Z" stroke-width="6"/>
+    <path d="M118 92 H146 L141 105 Q132 110 123 105 Z" stroke-width="6"/>
+    <path d="M90 76 V138" stroke-width="7"/>
+    <path d="M70 144 Q90 132 110 144" stroke-width="6"/>
+    <path d="M68 144 H112" stroke-width="7"/>
+  </g>
+</svg>

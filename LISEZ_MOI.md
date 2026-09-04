@@ -29,3 +29,20 @@ fois qu'il répond vraiment.
 ## Réglage DNS (fait une fois, chez Namecheap)
 
 Un enregistrement **CNAME** : hôte `gewel`, valeur `lamicisse33-dotcom.github.io`
+
+## L'icône
+
+`icone.svg` est le dessin d'origine : la balance KHALAM surmontée d'une antenne.
+Les fichiers `icone-32/180/192/512.png` en sont tirés — ne pas les modifier à la
+main, les regénérer :
+
+    for t in 180 192 512 32; do
+      convert -background '#0B1020' -density $((t*4)) icone.svg \
+              -resize ${t}x${t} -depth 8 -strip icone-${t}.png
+    done
+
+L'image reste **carrée et opaque** : iOS arrondit lui-même les coins, et une
+image déjà arrondie ressort avec des coins doubles.
+
+Le raccourci de l'écran d'accueil ne change pas d'icône tout seul : il faut le
+supprimer et le recréer depuis Safari (Partager → Sur l'écran d'accueil).
