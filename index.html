@@ -65,6 +65,24 @@
     padding-bottom:2px; opacity:0; pointer-events:none; transition:opacity .4s;
   }
   .lien.visible{ opacity:1; pointer-events:auto }
+
+  /* Poser le raccourci : il faut pouvoir le faire depuis CETTE page, avant la
+     bascule. Sinon l'iPhone enregistre l'adresse du serveur et la marque
+     disparait de l'ecran d'accueil. */
+  .poser{
+    position:fixed; left:0; right:0; bottom:calc(18px + env(safe-area-inset-bottom));
+    text-align:center;
+  }
+  .poser button{
+    background:none; border:0; color:var(--doux); font:inherit; font-size:11.5px;
+    letter-spacing:.06em; padding:10px 16px; cursor:pointer;
+  }
+  .mode-emploi{
+    display:none; max-width:300px; margin:22px auto 0; font-size:13px;
+    color:var(--doux); line-height:1.7; text-align:left;
+  }
+  .mode-emploi.visible{ display:block }
+  .mode-emploi b{ color:var(--or); font-weight:600 }
 </style>
 </head>
 <body>
@@ -90,7 +108,15 @@
 
   <div class="barre" aria-hidden="true"><i></i></div>
   <div class="etat" id="etat" role="status" aria-live="polite">Ouverture de GEWEL...</div>
-  <a class="lien" id="lien" href="https://gewel-backend.onrender.com/">Entrer maintenant</a>
+    <a class="lien" id="lien" href="https://gewel-backend.onrender.com/">Entrer maintenant</a>
+
+  <div class="mode-emploi" id="mode-emploi">
+    <div>1. Touchez le bouton <b>Partager</b> en bas de Safari — le carré avec une flèche.</div>
+    <div>2. Descendez jusqu’à <b>Sur l’écran d’accueil</b>.</div>
+    <div>3. Touchez <b>Ajouter</b>.</div>
+  </div>
+
+  <div class="poser"><button id="poser" type="button">Installer sur l’écran d’accueil</button></div>
 
 <script>
   /* --------------------------------------------------------------------
@@ -134,6 +160,7 @@
   }
 
   async function boucle() {
+    if (suspendu) { setTimeout(boucle, 1000); return; }
     if (await debout()) {
       etat.textContent = 'Serveur pret.';
       location.replace(SERVEUR + '/');
@@ -150,6 +177,19 @@
     }
     setTimeout(boucle, essais < 6 ? 1500 : 3000);
   }
+
+  /* Un appui sur « Installer » suspend la bascule : l'utilisateur a besoin que
+     l'adresse reste celle-ci pendant qu'il pose le raccourci. */
+  let suspendu = false;
+  const poser = document.getElementById('poser');
+  const modeEmploi = document.getElementById('mode-emploi');
+  poser.addEventListener('click', () => {
+    suspendu = true;
+    modeEmploi.classList.add('visible');
+    etat.textContent = 'Ouverture suspendue.';
+    lien.classList.add('visible');
+    poser.remove();
+  });
 
   boucle();
 </script>
