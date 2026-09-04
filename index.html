@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B1020">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GEWEL">
+<title>KHALAM TECHNOLOGIES</title>
+<style>
+  :root{ --or:#C9A227; --fond:#0B1020; --doux:rgba(201,162,39,.55); }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--fond); color:var(--or);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+    text-align:center; user-select:none; -webkit-user-select:none;
+  }
+
+  .balance{ opacity:.85 }
+  /* Le fleau oscille doucement : l'equilibre, lentement retrouve. */
+  .balance svg{ display:block; animation:pendule 4.5s ease-in-out infinite; transform-origin:36px 23px }
+  @keyframes pendule{
+    0%,100%{ transform:rotate(-2.4deg) }
+    50%    { transform:rotate(2.4deg) }
+  }
+  @media (prefers-reduced-motion:reduce){ .balance svg{ animation:none } }
+
+  .nom{
+    margin-top:18px; font-size:13px; font-weight:700;
+    letter-spacing:.42em; text-indent:.42em;
+  }
+  .metier{
+    margin-top:6px; font-size:10px; font-weight:600; color:var(--doux);
+    letter-spacing:.34em; text-indent:.34em;
+  }
+
+  .barre{
+    margin-top:34px; width:min(210px,60vw); height:1px;
+    background:rgba(201,162,39,.18); overflow:hidden;
+  }
+  .barre i{
+    display:block; height:100%; width:38%;
+    background:linear-gradient(90deg,transparent,var(--or),transparent);
+    animation:glisse 1.9s ease-in-out infinite;
+  }
+  @keyframes glisse{ 0%{transform:translateX(-110%)} 100%{transform:translateX(320%)} }
+
+  .etat{ margin-top:16px; font-size:12.5px; color:var(--doux); min-height:1.6em }
+  .lien{
+    margin-top:22px; font-size:12.5px; color:var(--or);
+    text-decoration:none; border-bottom:1px solid rgba(201,162,39,.4);
+    padding-bottom:2px; opacity:0; pointer-events:none; transition:opacity .4s;
+  }
+  .lien.visible{ opacity:1; pointer-events:auto }
+</style>
+</head>
+<body>
+
+  <div class="balance" aria-label="KHALAM">
+    <svg viewBox="0 0 72 72" width="96" height="96" fill="none" stroke="currentColor"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="36" cy="36" r="30" stroke-width="1" opacity=".45"/>
+      <path d="M19 28 Q36 21 53 28" stroke-width="2"/>
+      <circle cx="36" cy="23.4" r="2" stroke-width="1.8"/>
+      <path d="M19 28 L15 35 M19 28 L23 35" stroke-width=".9"/>
+      <path d="M53 28 L49 35 M53 28 L57 35" stroke-width=".9"/>
+      <path d="M13 35 H25 L23 40 Q19 42 15 40 Z" stroke-width="1.7"/>
+      <path d="M47 35 H59 L57 40 Q53 42 49 40 Z" stroke-width="1.7"/>
+      <path d="M36 25.4 V50" stroke-width="2"/>
+      <path d="M28 52 Q36 47 44 52" stroke-width="1.8"/>
+      <path d="M27 52 H45" stroke-width="2"/>
+    </svg>
+  </div>
+
+  <div class="nom">KHALAM</div>
+  <div class="metier">TECHNOLOGIES</div>
+
+  <div class="barre" aria-hidden="true"><i></i></div>
+  <div class="etat" id="etat" role="status" aria-live="polite">Ouverture de GEWEL...</div>
+  <a class="lien" id="lien" href="https://gewel-backend.onrender.com/">Entrer maintenant</a>
+
+<script>
+  /* --------------------------------------------------------------------
+     Cette page n'existe que pour couvrir le reveil du serveur.
+
+     Le serveur dort apres 15 minutes sans visite et met environ une minute
+     a revenir. Pendant ce temps, Render affiche sa propre page d'attente :
+     c'est elle qu'on remplace ici. On interroge /health en arriere-plan et
+     on ne bascule sur GEWEL qu'une fois le serveur reellement debout.
+     L'utilisateur ne voit donc que la marque.
+
+     On lit /health plutot que la page d'accueil : tant que le service dort,
+     Render repond du HTML et la lecture JSON echoue. Une reponse lisible est
+     donc la preuve que c'est notre serveur qui parle, pas la page d'attente.
+     -------------------------------------------------------------------- */
+  const SERVEUR = 'https://gewel-backend.onrender.com';
+  const etat = document.getElementById('etat');
+  const lien = document.getElementById('lien');
+
+  const depart = Date.now();
+  let essais = 0;
+
+  /* Le silence inquiete : on dit ou on en est. */
+  function message() {
+    const s = (Date.now() - depart) / 1000;
+    if (s < 4)  return 'Ouverture de GEWEL...';
+    if (s < 20) return 'Reveil du serveur...';
+    if (s < 45) return 'Encore quelques secondes...';
+    return 'Le reveil est plus long que d’habitude.';
+  }
+
+  async function debout() {
+    try {
+      const r = await fetch(SERVEUR + '/health', { cache: 'no-store' });
+      if (!r.ok) return false;
+      const j = await r.json();
+      return j && j.ok === true;
+    } catch {
+      return false; // service endormi, ou reseau coupe : on reessaie
+    }
+  }
+
+  async function boucle() {
+    if (await debout()) {
+      etat.textContent = 'Serveur pret.';
+      location.replace(SERVEUR + '/');
+      return;
+    }
+    essais += 1;
+    etat.textContent = message();
+
+    // Au-dela d'une minute et demie, on cesse de decider a sa place :
+    // le lien est la, il entre quand il veut.
+    if (Date.now() - depart > 90000) {
+      etat.textContent = 'Le serveur ne repond pas encore.';
+      lien.classList.add('visible');
+    }
+    setTimeout(boucle, essais < 6 ? 1500 : 3000);
+  }
+
+  boucle();
+</script>
+</body>
+</html>
