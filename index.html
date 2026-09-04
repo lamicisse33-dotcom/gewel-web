@@ -136,6 +136,11 @@
   const etat = document.getElementById('etat');
   const lien = document.getElementById('lien');
 
+  /* Duree d'affichage minimale. Quand le serveur est deja reveille il repond en
+     une fraction de seconde : la page disparaissait avant qu'on ait vu la
+     marque. Trois secondes, c'est le temps de lire un nom. */
+  const MINIMUM_MS = 3000;
+
   const depart = Date.now();
   let essais = 0;
 
@@ -163,6 +168,8 @@
     if (suspendu) { setTimeout(boucle, 1000); return; }
     if (await debout()) {
       etat.textContent = 'Serveur pret.';
+      const reste = MINIMUM_MS - (Date.now() - depart);
+      if (reste > 0) await new Promise((r) => setTimeout(r, reste));
       location.replace(SERVEUR + '/');
       return;
     }
