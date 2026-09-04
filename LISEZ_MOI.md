@@ -1,18 +1,18 @@
 # gewel.khalam.app — page d'attente
 
-Une seule page. Elle affiche la marque KHALAM pendant que le serveur GEWEL se
+Une seule page. Elle affiche la marque KHALAM pendant que le serveur GÉWEL se
 réveille, puis bascule dessus toute seule.
 
 ## Pourquoi elle existe
 
-Le serveur GEWEL est hébergé chez Render sur l'offre gratuite : il s'endort
+Le serveur GÉWEL est hébergé chez Render sur l'offre gratuite : il s'endort
 après 15 minutes sans visite et met environ une minute à revenir. Pendant ce
 temps, Render affiche **sa** page à lui — fond noir, logo Render,
 « APPLICATION LOADING ». Sur une démonstration, c'est la marque de
 l'hébergeur qu'on montre.
 
 Cette page-ci vit ailleurs (GitHub Pages, toujours éveillé). Elle s'affiche
-tout de suite, réveille le serveur en arrière-plan, et n'ouvre GEWEL qu'une
+tout de suite, réveille le serveur en arrière-plan, et n'ouvre GÉWEL qu'une
 fois qu'il répond vraiment.
 
 ## Ce qu'il faut savoir

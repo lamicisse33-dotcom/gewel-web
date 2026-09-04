@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0B1020">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="GEWEL">
+<meta name="apple-mobile-web-app-title" content="GÉWEL">
 
 <!-- L'icone du raccourci pose sur l'ecran d'accueil vient d'ici. iOS arrondit
      lui-meme les coins : l'image doit rester carree et opaque, sinon les coins
@@ -107,7 +107,7 @@
   <div class="metier">TECHNOLOGIES</div>
 
   <div class="barre" aria-hidden="true"><i></i></div>
-  <div class="etat" id="etat" role="status" aria-live="polite">Ouverture de GEWEL...</div>
+  <div class="etat" id="etat" role="status" aria-live="polite">Ouverture de GÉWEL...</div>
     <a class="lien" id="lien" href="https://gewel-backend.onrender.com/">Entrer maintenant</a>
 
   <div class="mode-emploi" id="mode-emploi">
@@ -125,7 +125,7 @@
      Le serveur dort apres 15 minutes sans visite et met environ une minute
      a revenir. Pendant ce temps, Render affiche sa propre page d'attente :
      c'est elle qu'on remplace ici. On interroge /health en arriere-plan et
-     on ne bascule sur GEWEL qu'une fois le serveur reellement debout.
+     on ne bascule sur GÉWEL qu'une fois le serveur reellement debout.
      L'utilisateur ne voit donc que la marque.
 
      On lit /health plutot que la page d'accueil : tant que le service dort,
@@ -147,7 +147,7 @@
   /* Le silence inquiete : on dit ou on en est. */
   function message() {
     const s = (Date.now() - depart) / 1000;
-    if (s < 4)  return 'Ouverture de GEWEL...';
+    if (s < 4)  return 'Ouverture de GÉWEL...';
     if (s < 20) return 'Reveil du serveur...';
     if (s < 45) return 'Encore quelques secondes...';
     return 'Le reveil est plus long que d’habitude.';
