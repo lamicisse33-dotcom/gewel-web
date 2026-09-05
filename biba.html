@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>BIBA — l'assistante de KHALAM</title>
+<meta name="theme-color" content="#0B1020">
+<style>
+  :root { --or:#C9A227; --nuit:#0B1020; --creme:#FFF7DC; --rouge:#ef4444; --bleu:#3b82f6; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--nuit); color:var(--creme); display:flex; flex-direction:column;
+         font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         padding:calc(env(safe-area-inset-top,0px) + 16px) 18px calc(env(safe-area-inset-bottom,0px) + 22px); }
+  main { max-width:560px; width:100%; margin:0 auto; flex:1; display:flex; flex-direction:column; }
+
+  header { text-align:center; flex:0 0 auto; }
+  .marque { font-size:12px; letter-spacing:4px; opacity:.45; }
+  h1 { font-size:26px; margin:6px 0 2px; color:var(--or); letter-spacing:1px; }
+  .role { font-size:13px; opacity:.55; margin:0; }
+
+  .scene { flex:1; display:flex; flex-direction:column; align-items:center;
+           justify-content:center; gap:16px; text-align:center; min-height:0; padding:18px 0; }
+  .dit { font-size:14px; font-style:italic; opacity:.5; min-height:1.4em; }
+  .reponse { font-size:21px; line-height:1.45; }
+  .reponse-fr { font-size:14px; opacity:.55; margin-top:8px; }
+  .qui { font-size:12px; letter-spacing:1.5px; text-transform:uppercase; opacity:.45; }
+
+  .commande { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .micro { width:clamp(96px,26vw,124px); height:clamp(96px,26vw,124px); border:0; border-radius:50%;
+           background:var(--bleu); color:#fff; display:grid; place-items:center; cursor:pointer;
+           transition:transform .12s ease, background .12s ease; touch-action:none;
+           -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  .micro svg { width:42%; height:42%; fill:currentColor; }
+  .etat { display:flex; align-items:center; justify-content:center; gap:8px;
+          font-size:14px; opacity:.75; min-height:1.5em; }
+
+  .balance { display:none; color:var(--or); line-height:0; }
+  .balance[data-actif="oui"] { display:inline-flex; }
+  .balance .fleau { transform-box:view-box; transform-origin:16px 11px;
+                    animation:peser 1.9s cubic-bezier(.45,0,.55,1) infinite; }
+  @keyframes peser { 0%,100% { transform:rotate(-12deg); } 50% { transform:rotate(12deg); } }
+  @media (prefers-reduced-motion: reduce) { .balance .fleau { animation:none; } }
+
+  button.plat { background:transparent; border:1px solid rgba(255,247,220,.25); color:var(--creme);
+                border-radius:99px; padding:9px 16px; font:inherit; font-size:13px; cursor:pointer; }
+  input, textarea { font:inherit; width:100%; padding:13px 14px; border-radius:12px; color:var(--creme);
+                    border:1px solid rgba(255,247,220,.18); background:rgba(255,255,255,.05); }
+  .boite { background:rgba(255,255,255,.05); border-radius:16px; padding:16px; margin-top:14px; text-align:left; }
+  .boite h2 { font-size:14px; margin:0 0 10px; opacity:.7; font-weight:600; }
+  .plein { width:100%; background:var(--or); color:#1a1405; border:0; border-radius:12px;
+           padding:14px; font:inherit; font-weight:700; margin-top:10px; cursor:pointer; }
+  .erreur { color:#ff9d9d; }
+
+  #verrou { position:fixed; inset:0; z-index:20; background:var(--nuit); display:flex;
+            align-items:center; justify-content:center; padding:24px; }
+  #verrou .dedans { max-width:400px; width:100%; text-align:center; }
+</style>
+</head>
+<body>
+
+<div id="verrou">
+  <div class="dedans">
+    <div class="marque">K H A L A M</div>
+    <h1>BIBA</h1>
+    <p class="role" style="margin-bottom:22px">Tape le code que KHALAM t'a envoyé.</p>
+    <input id="code" type="text" autocomplete="off" autocapitalize="characters"
+           placeholder="AWA-N8YT-K89YZ" style="text-align:center; letter-spacing:1px">
+    <button class="plein" id="entrer">Entrer</button>
+    <p id="verrou-erreur" class="erreur" style="font-size:14px" hidden></p>
+  </div>
+</div>
+
+<main hidden id="appli">
+  <header>
+    <div class="marque">K H A L A M</div>
+    <h1>BIBA</h1>
+    <p class="role">Assistante virtuelle</p>
+  </header>
+
+  <div class="scene">
+    <div class="qui" id="qui" hidden></div>
+    <div class="dit" id="entendu"></div>
+    <div>
+      <div class="reponse" id="reponse">Appuie sur le micro et parle.</div>
+      <div class="reponse-fr" id="reponse-fr"></div>
+    </div>
+    <button class="plat" id="mal" hidden>Mal traduit</button>
+    <div class="boite" id="correction" hidden>
+      <h2>Comment fallait-il le dire ?</h2>
+      <textarea id="juste" rows="3"></textarea>
+      <button class="plein" id="envoyer">Envoyer la correction</button>
+    </div>
+  </div>
+
+  <div class="commande">
+    <button class="micro" id="micro" aria-label="Parler à BIBA">
+      <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11z"/></svg>
+    </button>
+    <div class="etat">
+      <span class="balance" id="pense" hidden aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 8v17"/><path d="M10 25.5h12"/>
+          <g class="fleau">
+            <path d="M5 11h22"/>
+            <path d="M5 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
+            <path d="M27 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
+          </g>
+        </svg>
+      </span>
+      <span id="etat">Appuie pour parler</span>
+    </div>
+  </div>
+</main>
+
+<audio id="son" playsinline></audio>
+
+<script>
+/* Cette page est servie depuis une adresse de KHALAM ; le serveur est
+   ailleurs, l'adresse d'appel doit donc être entière. Le serveur autorise
+   expressément cette origine — sans quoi le navigateur bloquerait l'appel
+   avant même qu'il parte. NE PAS recopier ce fichier à la main : passer par
+   outils-copie-site.mjs, sinon l'adresse redevient relative et la page meurt
+   en silence. */
+const SERVEUR = 'https://interprete-wolof.onrender.com';
+const $ = (id) => document.getElementById(id);
+
+let code = '';
+try { code = localStorage.getItem('biba.code') || ''; } catch {}
+
+async function appel(chemin, corps) {
+  const r = await fetch(SERVEUR + chemin, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-code-acces': code },
+    body: JSON.stringify(corps),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    if (j.etat === 'code_expire' || j.etat === 'code_epuise' || j.etat === 'trop_d_essais') {
+      throw new Error(j.erreur);
+    }
+    throw new Error(j.erreur || `Le service a répondu ${r.status}`);
+  }
+  return j;
+}
+
+/* ── L'état affiché ───────────────────────────────────────────────────── */
+function etat(texte, pense = false) {
+  $('etat').textContent = texte;
+  $('pense').hidden = !pense;
+  $('pense').dataset.actif = pense ? 'oui' : 'non';
+}
+
+/* ── La conversation ──────────────────────────────────────────────────── */
+const FIN_CONVERSATION_MS = 30000;
+let phrases = {};
+let attendLeNom = false;
+let nomActuel = '';
+let questionEnAttente = '';
+let dernier = null;
+let minuteurFin = null;
+const motsDe = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
+
+function relancer() { clearTimeout(minuteurFin); minuteurFin = setTimeout(finir, FIN_CONVERSATION_MS); }
+function suspendre() { clearTimeout(minuteurFin); }
+function finir() {
+  suspendre();
+  nomActuel = ''; attendLeNom = false; questionEnAttente = ''; dernier = null;
+  $('qui').hidden = true;
+  $('mal').hidden = true; $('correction').hidden = true;
+  $('entendu').textContent = '';
+  $('reponse').textContent = 'Appuie sur le micro et parle.';
+  $('reponse-fr').textContent = '';
+  etat('Appuie pour parler');
+}
+
+function phrase(cle, nom) {
+  const p = phrases[cle] || {};
+  const wo = (p.wo || '').trim();
+  const texte = wo || p.fr || '';
+  return { texte: texte.replace('{nom}', nom || ''), langue: wo ? 'wo' : 'fr',
+           fr: (p.fr || '').replace('{nom}', nom || '') };
+}
+
+async function direPhrase(cle, nom) {
+  const p = phrase(cle, nom);
+  if (!p.texte) return;
+  $('reponse').textContent = p.texte;
+  $('reponse-fr').textContent = (p.langue === 'wo' && p.fr !== p.texte) ? p.fr : '';
+  try {
+    const r = await appel('/api/voix', { texte: p.texte, langue: p.langue, voix: 'femme' });
+    if (r.audio_base64) {
+      const son = $('son');
+      son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
+      await jouerEtAttendre(son);
+    }
+  } catch { /* sans voix, le texte reste à l'écran */ }
+}
+
+/* ── La parole de BIBA, qu'on peut couper ─────────────────────────────── */
+let enTrainDeParler = false;
+let finDeParole = null;
+
+function arreterLaParole() {
+  if (!enTrainDeParler) return;
+  const son = $('son');
+  son.pause();
+  try { son.currentTime = 0; } catch {}
+  if (finDeParole) finDeParole();
+}
+
+function jouerEtAttendre(son) {
+  return new Promise((fini) => {
+    let rendu = false;
+    const rendre = () => {
+      if (rendu) return;
+      rendu = true; enTrainDeParler = false; finDeParole = null; fini();
+    };
+    enTrainDeParler = true; finDeParole = rendre;
+    son.onended = rendre; son.onerror = rendre;
+    setTimeout(rendre, 45000);
+    son.play().catch(rendre);
+  });
+}
+
+/* ── Le micro ─────────────────────────────────────────────────────────── */
+const SILENCE_MS = 2000;
+let enregistreur = null;
+let flux = null;
+
+function micActif(actif) {
+  const b = $('micro');
+  b.style.background = actif ? 'var(--rouge)' : 'var(--bleu)';
+  b.style.transform = actif ? 'scale(1.06)' : 'scale(1)';
+  if (!actif) b.style.boxShadow = 'none';
+}
+
+/* Trois filets indépendants, parce que sur iPhone l'analyse du son peut ne
+   jamais démarrer : le silence, le « on n'a rien dit », et une horloge qui ne
+   dépend d'aucun son. Sans le dernier, le micro resterait ouvert sans fin. */
+function surveiller(fluxAudio, arreter, rapport) {
+  const SANS_UN_MOT_MS = 6000;
+  const DUREE_MAX = 30000;
+  const bouton = $('micro');
+  let termine = false, horloge = null, boucle = null, ctx = null;
+
+  const conclure = () => {
+    if (termine) return;
+    termine = true;
+    clearInterval(boucle); clearTimeout(horloge);
+    micActif(false);
+    if (ctx) ctx.close().catch(() => {});
+  };
+  const fermer = () => { conclure(); arreter(); };
+  horloge = setTimeout(fermer, DUREE_MAX);
+
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const analyse = ctx.createAnalyser();
+    analyse.fftSize = 1024;
+    ctx.createMediaStreamSource(fluxAudio).connect(analyse);
+    const donnees = new Uint8Array(analyse.fftSize);
+
+    let fond = 0, mesures = 0, aParle = false;
+    let debutSilence = 0, debutParole = 0, dernierTour = Date.now();
+    const DEBUT = Date.now(), CALIBRATION_MS = 500, PAROLE_MINIMALE = 1000;
+
+    const niveau = () => {
+      analyse.getByteTimeDomainData(donnees);
+      let s = 0;
+      for (let i = 0; i < donnees.length; i += 1) { const v = (donnees[i] - 128) / 128; s += v * v; }
+      return Math.sqrt(s / donnees.length);
+    };
+
+    boucle = setInterval(() => {
+      if (termine) return;
+      if (!enregistreur || enregistreur.state !== 'recording') { conclure(); return; }
+      const n = niveau();
+      const ecoule = Date.now() - DEBUT;
+      if (ecoule < CALIBRATION_MS) { fond += n; mesures += 1; return; }
+
+      rapport.analyse = true;
+      const ecartTour = Math.min(Date.now() - dernierTour, 150);
+      dernierTour = Date.now();
+      const seuil = Math.max((mesures ? fond / mesures : 0.01) * 2.2, 0.02);
+
+      const ampleur = Math.min(1, n / (seuil * 3));
+      bouton.style.boxShadow = n > seuil
+        ? `0 0 0 ${Math.round(6 + ampleur * 18)}px rgba(239,68,68,${0.28 - ampleur * 0.16})` : 'none';
+
+      if (n > seuil) {
+        if (!aParle) debutParole = Date.now();
+        aParle = true; debutSilence = 0; rapport.parole += ecartTour;
+        return;
+      }
+      if (!aParle) { if (ecoule > SANS_UN_MOT_MS) fermer(); return; }
+      if (Date.now() - debutParole <= PAROLE_MINIMALE) return;
+      if (!debutSilence) debutSilence = Date.now();
+      else if (Date.now() - debutSilence > SILENCE_MS) fermer();
+    }, 100);
+  } catch { /* il reste l'horloge et le second appui */ }
+
+  return conclure;
+}
+
+function format() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']) {
+    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+const EXT = { 'audio/mp4':'m4a', 'audio/webm':'webm', 'audio/ogg':'ogg' };
+
+$('micro').onclick = async () => {
+  if (enregistreur) { enregistreur.stop(); return; }   // second appui : on coupe
+  arreterLaParole();        // elle parlait : on lui coupe la parole pour écouter
+  suspendre();
+  return ecouter();
+};
+
+let ouvertureEnCours = false;
+async function ecouter() {
+  if (ouvertureEnCours) return;
+  const f = format();
+  if (f === null) { etat("Ce téléphone ne sait pas enregistrer."); return; }
+  ouvertureEnCours = true;
+  try {
+    flux = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch {
+    ouvertureEnCours = false;
+    etat("Le micro n'est pas autorisé sur cet appareil");
+    return;
+  }
+  ouvertureEnCours = false;
+
+  const morceaux = [];
+  enregistreur = f ? new MediaRecorder(flux, { mimeType: f }) : new MediaRecorder(flux);
+  enregistreur.ondataavailable = (e) => { if (e.data.size) morceaux.push(e.data); };
+
+  const rapport = { analyse: false, parole: 0 };
+  const stop = surveiller(flux, () => {
+    if (enregistreur && enregistreur.state === 'recording') enregistreur.stop();
+  }, rapport);
+
+  const cet = enregistreur;
+  enregistreur.onstop = async () => {
+    stop();
+    flux.getTracks().forEach((t) => t.stop());
+    enregistreur = null;
+    micActif(false);
+    const type = (cet && cet.mimeType) || f || 'audio/mp4';
+    const audio = new Blob(morceaux, { type });
+
+    /* On n'envoie pas un enregistrement où personne n'a parlé : le moteur de
+       reconnaissance, à qui on tend du silence, invente une phrase — et BIBA
+       répondrait très sérieusement à une question que personne n'a posée. */
+    if ((rapport.analyse && rapport.parole < 300) || audio.size < 1200) {
+      etat('Rien entendu. Appuie et parle.');
+      relancer();
+      return;
+    }
+    await envoyer(audio, EXT[String(type).split(';')[0]] || 'm4a');
+  };
+
+  enregistreur.start();
+  micActif(true);
+  etat('Je t’écoute…');
+  $('entendu').textContent = '';
+}
+
+const AMORCES = [
+  /^\s*(je m'?appelle|moi c'?est|mon nom est|c'?est)\s+/i,
+  /^\s*(maa ngi tudd|maa ngui tudd|tudd naa|sama tur mooy|sama tur)\s+/i,
+];
+function extraireNom(dit) {
+  let t = String(dit || '').trim().replace(/[.!?]+$/, '');
+  for (const a of AMORCES) t = t.replace(a, '');
+  const mots = t.split(/\s+/).filter(Boolean).slice(0, 3);
+  if (!mots.length) return '';
+  return mots.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(' ');
+}
+
+async function envoyer(audio, extension) {
+  etat('BIBA réfléchit…', true);
+  try {
+    const form = new FormData();
+    form.append('audio', audio, `question.${extension}`);
+    const r = await fetch(SERVEUR + '/api/entendre', {
+      method: 'POST', headers: { 'x-code-acces': code }, body: form,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { etat(j.erreur || `Le service a répondu ${r.status}`); return; }
+    if (j.etat !== 'ok' || !j.texte) { etat(j.message || 'Rien entendu. Reprends plus près.'); return; }
+
+    $('entendu').textContent = `« ${j.texte} »`;
+
+    if (attendLeNom) {
+      const entendu = extraireNom(j.texte);
+      if (!entendu) { await direPhrase('nom_pas_compris'); relancer(); return; }
+      let nom = entendu;
+      try {
+        const p = await appel('/api/prenom', { prenom: entendu });
+        if (p && p.prenom) nom = p.prenom;
+      } catch { /* le service dort : on garde ce qu'on a entendu */ }
+      attendLeNom = false;
+      nomActuel = nom;
+      $('qui').textContent = `BIBA parle à ${nom}`;
+      $('qui').hidden = false;
+      await direPhrase('accueil', nom);
+      const enAttente = questionEnAttente;
+      questionEnAttente = '';
+      if (enAttente) { await demander(enAttente); relancer(); return; }
+      etat('Appuie pour poser ta question');
+      relancer();
+      return;
+    }
+
+    /* Personne ne s'est encore nommé : avant de répondre, BIBA dit qui elle est
+       et demande à qui elle parle. La question attend son tour. */
+    if (!nomActuel && phrases.presentation) {
+      attendLeNom = true;
+      questionEnAttente = motsDe(j.texte) >= 2 ? j.texte : '';
+      etat('Appuie et dis ton nom');
+      await direPhrase('presentation');
+      relancer();
+      return;
+    }
+
+    await demander(j.texte);
+    relancer();
+  } catch (e) {
+    etat(e.message);
+  } finally {
+    relancer();
+  }
+}
+
+async function demander(question) {
+  $('mal').hidden = true;
+  $('correction').hidden = true;
+  etat('BIBA réfléchit…', true);
+  try {
+    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel });
+    dernier = r;
+    const enFrancais = r.langue_reponse === 'fr';
+    $('reponse').textContent = r.reponse || r.reponse_wo || '(pas de réponse)';
+    $('reponse-fr').textContent = enFrancais ? '' : (r.reponse_fr || '');
+    $('mal').hidden = enFrancais;
+
+    const texte = r.reponse || r.reponse_wo;
+    if (texte) {
+      const v = await appel('/api/voix', { texte, langue: enFrancais ? 'fr' : 'wo', voix: 'femme' });
+      if (v.audio_base64) {
+        const son = $('son');
+        son.src = `data:${v.type_mime || 'audio/mp4'};base64,${v.audio_base64}`;
+        await jouerEtAttendre(son);
+      }
+    }
+    etat('Appuie pour poser une autre question');
+  } catch (e) {
+    etat(e.message);
+  }
+}
+
+/* ── La correction : c'est elle qui fait grandir le lexique ───────────── */
+$('mal').onclick = () => {
+  if (!dernier || dernier.langue_reponse === 'fr') return;
+  $('correction').hidden = false;
+  $('juste').value = dernier.reponse_wo || '';
+  $('juste').focus();
+};
+
+$('envoyer').onclick = async () => {
+  const corrigee = $('juste').value.trim();
+  if (!dernier || !corrigee) return;
+  $('envoyer').disabled = true;
+  try {
+    await appel('/api/corriger', {
+      source: dernier.reponse_fr, proposee: dernier.reponse_wo, corrigee,
+      langue_source: 'fr', id_echange: dernier.id_echange, auteur: 'BIBA',
+    });
+    $('reponse').textContent = corrigee;
+    $('correction').hidden = true;
+    $('mal').hidden = true;
+    etat('Merci — c’est enregistré');
+  } catch (e) {
+    etat(e.message);
+  } finally {
+    $('envoyer').disabled = false;
+  }
+};
+
+/* ── L'entrée ─────────────────────────────────────────────────────────── */
+async function ouvrir() {
+  $('verrou').style.display = 'none';
+  $('appli').hidden = false;
+  try {
+    const r = await fetch(SERVEUR + '/api/phrases', {
+      cache: 'no-store', headers: { 'x-code-acces': code },
+    });
+    if (r.ok) (await r.json()).forEach((p) => { phrases[p.cle] = p; });
+  } catch { /* le service dort : on se présentera plus tard */ }
+  etat('Appuie pour parler');
+}
+
+$('entrer').onclick = async () => {
+  const propose = $('code').value.trim();
+  if (!propose) { $('code').focus(); return; }
+  $('entrer').disabled = true;
+  $('verrou-erreur').hidden = true;
+  try {
+    // On dépense un appel gratuit pour vérifier le code avant d'ouvrir : mieux
+    // vaut refuser tout de suite que laisser quelqu'un parler pour rien.
+    const r = await fetch(SERVEUR + '/api/phrases', {
+      cache: 'no-store', headers: { 'x-code-acces': propose },
+    });
+    const j = r.ok ? null : await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j && j.erreur) || 'Code refusé.');
+    code = propose;
+    try { localStorage.setItem('biba.code', code); } catch {}
+    await ouvrir();
+  } catch (e) {
+    $('verrou-erreur').textContent = e.message;
+    $('verrou-erreur').hidden = false;
+  } finally {
+    $('entrer').disabled = false;
+  }
+};
+
+$('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('entrer').click(); });
+
+// Un code déjà accepté sur ce téléphone : on entre sans rien redemander.
+if (code) ouvrir();
+</script>
+</body>
+</html>
