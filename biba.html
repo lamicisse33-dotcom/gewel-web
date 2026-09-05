@@ -508,24 +508,64 @@ async function ouvrir() {
   etat('Appuie pour parler');
 }
 
+/* On dépense un appel gratuit pour vérifier le code avant d'ouvrir : mieux
+   vaut refuser tout de suite que laisser quelqu'un parler pour rien. */
+async function codeAccepte(propose) {
+  const r = await fetch(SERVEUR + '/api/phrases', {
+    cache: 'no-store', headers: { 'x-code-acces': propose },
+  });
+  if (r.ok) return true;
+  const j = await r.json().catch(() => ({}));
+  if (j.erreur) $('verrou-erreur').textContent = j.erreur;
+  return false;
+}
+
+async function entrerAvec(propose) {
+  code = propose;
+  try { localStorage.setItem('biba.code', code); } catch {}
+  await ouvrir();
+}
+
+/* ── Un code juste ouvre tout seul ─────────────────────────────────────────
+   On ne demande pas d'appuyer sur un bouton après avoir tapé la bonne chose.
+
+   Mais on ne peut pas essayer à chaque lettre : le service ferme la porte au
+   bout de vingt codes faux, et taper un code de quinze caractères en
+   consommerait quinze — la personne serait bloquée avant même d'avoir fini
+   d'écrire. On attend donc que la frappe s'arrête, on n'essaie jamais deux
+   fois la même chose, et on s'arrête après trois refus : à partir de là c'est
+   le bouton qui décide, et le budget d'essais est préservé. */
+function essaiAutomatique(champ, verifier, reussi) {
+  let minuteur = null;
+  const dejaEssaye = new Set();
+  let refus = 0;
+  champ.addEventListener('input', () => {
+    clearTimeout(minuteur);
+    const valeur = champ.value.trim();
+    if (valeur.length < 4 || refus >= 3 || dejaEssaye.has(valeur)) return;
+    minuteur = setTimeout(async () => {
+      if (champ.value.trim() !== valeur || dejaEssaye.has(valeur)) return;
+      dejaEssaye.add(valeur);
+      let bon = false;
+      try { bon = await verifier(valeur); } catch { bon = false; }
+      if (bon) reussi(valeur); else refus += 1;
+    }, 700);
+  });
+}
+
+essaiAutomatique($('code'), codeAccepte, entrerAvec);
+
 $('entrer').onclick = async () => {
   const propose = $('code').value.trim();
   if (!propose) { $('code').focus(); return; }
   $('entrer').disabled = true;
   $('verrou-erreur').hidden = true;
   try {
-    // On dépense un appel gratuit pour vérifier le code avant d'ouvrir : mieux
-    // vaut refuser tout de suite que laisser quelqu'un parler pour rien.
-    const r = await fetch(SERVEUR + '/api/phrases', {
-      cache: 'no-store', headers: { 'x-code-acces': propose },
-    });
-    const j = r.ok ? null : await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j && j.erreur) || 'Code refusé.');
-    code = propose;
-    try { localStorage.setItem('biba.code', code); } catch {}
-    await ouvrir();
-  } catch (e) {
-    $('verrou-erreur').textContent = e.message;
+    $('verrou-erreur').textContent = 'Code refusé.';
+    if (!await codeAccepte(propose)) { $('verrou-erreur').hidden = false; return; }
+    await entrerAvec(propose);
+  } catch {
+    $('verrou-erreur').textContent = 'Pas de connexion. Réessaie.';
     $('verrou-erreur').hidden = false;
   } finally {
     $('entrer').disabled = false;
