@@ -158,6 +158,10 @@ let phrases = {};
 let attendLeNom = false;
 let nomActuel = '';
 let questionEnAttente = '';
+/* La langue de celui qui parle, retenue dès sa première phrase. BIBA se
+   présente et accueille dans SA langue : quelqu'un qui dit « Bonjour » ne
+   doit pas s'entendre répondre en wolof, même si le wolof est plus beau. */
+let langueConversation = '';
 let dernier = null;
 let minuteurFin = null;
 const motsDe = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
@@ -177,7 +181,8 @@ function finir() {
 
 function phrase(cle, nom) {
   const p = phrases[cle] || {};
-  const wo = (p.wo || '').trim();
+  // En français, on ne va pas chercher le wolof, même s'il est écrit.
+  const wo = langueConversation === 'fr' ? '' : (p.wo || '').trim();
   const texte = wo || p.fr || '';
   return { texte: texte.replace('{nom}', nom || ''), langue: wo ? 'wo' : 'fr',
            fr: (p.fr || '').replace('{nom}', nom || '') };
@@ -429,6 +434,10 @@ async function envoyer(audio, extension) {
     if (j.etat !== 'ok' || !j.texte) { etat(j.message || 'Rien entendu. Reprends plus près.'); return; }
 
     $('entendu').textContent = `« ${j.texte} »`;
+    // La langue se fixe sur la première phrase et tient toute la conversation.
+    if (!langueConversation && (j.langue_detectee === 'fr' || j.langue_detectee === 'wo')) {
+      langueConversation = j.langue_detectee;
+    }
 
     if (attendLeNom) {
       const entendu = extraireNom(j.texte);
