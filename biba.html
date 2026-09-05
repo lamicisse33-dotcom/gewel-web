@@ -188,15 +188,46 @@ async function direPhrase(cle, nom) {
   if (!p.texte) return;
   $('reponse').textContent = p.texte;
   $('reponse-fr').textContent = (p.langue === 'wo' && p.fr !== p.texte) ? p.fr : '';
-  try {
-    const r = await appel('/api/voix', { texte: p.texte, langue: p.langue, voix: 'femme' });
-    if (r.audio_base64) {
-      const son = $('son');
-      son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
-      await jouerEtAttendre(son);
-    }
-  } catch { /* sans voix, le texte reste à l'écran */ }
+  await direAVoixHaute(p.texte, p.langue);
 }
+
+/* Une voix qui échoue ne doit pas se taire en silence : le texte reste à
+   l'écran et on croit que c'est normal. On le dit. */
+async function direAVoixHaute(texte, langue) {
+  if (!texte) return;
+  try {
+    const r = await appel('/api/voix', { texte, langue, voix: 'femme' });
+    if (!r.audio_base64) { etat('La voix n’a rien renvoyé — le texte est à l’écran'); return; }
+    const son = $('son');
+    son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
+    await jouerEtAttendre(son);
+  } catch (e) {
+    etat(`Sans la voix : ${e.message}`);
+  }
+}
+
+/* ── Obtenir le droit de parler ────────────────────────────────────────────
+   L'iPhone refuse de jouer un son qui n'a pas été déclenché DIRECTEMENT par un
+   doigt. Or entre l'appui et la voix de BIBA il y a trois attentes : le micro
+   s'ouvre, la transcription part et revient, puis on va chercher la voix. Le
+   temps que tout ça revienne, Safari considère que le geste est terminé et
+   refuse — sans erreur, sans rien à l'écran. On croit BIBA muette.
+
+   On prend donc la permission d'avance : au tout premier contact du doigt sur
+   la page, on lance un son vide et on l'arrête aussitôt. Ça ne s'entend pas,
+   et tout ce qui suit passe. */
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+let audioDebloque = false;
+
+function debloquerAudio() {
+  if (audioDebloque) return;
+  const son = $('son');
+  son.src = SILENCE;
+  son.play().then(() => { audioDebloque = true; son.pause(); })
+            .catch(() => { /* réessai au prochain contact */ });
+}
+document.addEventListener('pointerdown', debloquerAudio);
+document.addEventListener('touchstart', debloquerAudio, { passive: true });
 
 /* ── La parole de BIBA, qu'on peut couper ─────────────────────────────── */
 let enTrainDeParler = false;
@@ -452,15 +483,7 @@ async function demander(question) {
     $('reponse-fr').textContent = enFrancais ? '' : (r.reponse_fr || '');
     $('mal').hidden = enFrancais;
 
-    const texte = r.reponse || r.reponse_wo;
-    if (texte) {
-      const v = await appel('/api/voix', { texte, langue: enFrancais ? 'fr' : 'wo', voix: 'femme' });
-      if (v.audio_base64) {
-        const son = $('son');
-        son.src = `data:${v.type_mime || 'audio/mp4'};base64,${v.audio_base64}`;
-        await jouerEtAttendre(son);
-      }
-    }
+    await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
     etat('Appuie pour poser une autre question');
   } catch (e) {
     etat(e.message);
