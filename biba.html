@@ -200,6 +200,19 @@ async function direPhrase(cle, nom) {
   await direAVoixHaute(p.texte, p.langue);
 }
 
+/* Ce que BIBA doit DIRE, pas seulement afficher.
+
+   « Tu as utilisé tes 15 questions » écrit sur un écran ne sert à rien à
+   quelqu'un qui ne lit pas — et c'est précisément pour ces gens-là que cette
+   application existe. Toujours en français : c'est un message de KHALAM, pas
+   une réponse à une question, et le wolof n'est pas encore relu. */
+async function annoncer(message) {
+  etat(message);
+  $('reponse').textContent = message;
+  $('reponse-fr').textContent = '';
+  await direAVoixHaute(message, 'fr');
+}
+
 /* Une voix qui échoue ne doit pas se taire en silence : le texte reste à
    l'écran et on croit que c'est normal. On le dit. */
 async function direAVoixHaute(texte, langue) {
@@ -434,6 +447,7 @@ async function envoyer(audio, extension) {
       method: 'POST', headers: { 'x-code-acces': code }, body: form,
     });
     const j = await r.json().catch(() => ({}));
+    if (j.etat === 'code_epuise' || j.etat === 'code_expire') { await annoncer(j.erreur); return; }
     if (!r.ok) { etat(j.erreur || `Le service a répondu ${r.status}`); return; }
     if (j.etat !== 'ok' || !j.texte) { etat(j.message || 'Rien entendu. Reprends plus près.'); return; }
 
@@ -498,6 +512,9 @@ async function demander(question) {
     await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
     etat('Appuie pour poser une autre question');
   } catch (e) {
+    // Le service dit lui-même quand le code est épuisé ou périmé : on le
+    // répète à voix haute plutôt que de l'écrire dans un coin.
+    if (/questions|nouveau code|expiré/i.test(e.message)) { await annoncer(e.message); return; }
     etat(e.message);
   }
 }
