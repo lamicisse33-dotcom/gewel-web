@@ -158,9 +158,13 @@ let phrases = {};
 let attendLeNom = false;
 let nomActuel = '';
 let questionEnAttente = '';
-/* La langue de celui qui parle, retenue dès sa première phrase. BIBA se
-   présente et accueille dans SA langue : quelqu'un qui dit « Bonjour » ne
-   doit pas s'entendre répondre en wolof, même si le wolof est plus beau. */
+/* La langue de celui qui parle, retenue dès sa première phrase.
+
+   LE FRANÇAIS EST LE DÉFAUT, et le doute lui revient. Décidé avec Lamine :
+   son wolof n'est pas encore entièrement relu, et BIBA peut s'y tromper. Une
+   réponse française à quelqu'un qui parle wolof se comprend ; du wolof
+   approximatif à quelqu'un qui n'en attendait pas, non. Le wolof ne sort que
+   lorsqu'on en est sûr. */
 let langueConversation = '';
 let dernier = null;
 let minuteurFin = null;
@@ -181,8 +185,8 @@ function finir() {
 
 function phrase(cle, nom) {
   const p = phrases[cle] || {};
-  // En français, on ne va pas chercher le wolof, même s'il est écrit.
-  const wo = langueConversation === 'fr' ? '' : (p.wo || '').trim();
+  // Le wolof, seulement si on est sûr que c'est la langue de la personne.
+  const wo = langueConversation === 'wo' ? (p.wo || '').trim() : '';
   const texte = wo || p.fr || '';
   return { texte: texte.replace('{nom}', nom || ''), langue: wo ? 'wo' : 'fr',
            fr: (p.fr || '').replace('{nom}', nom || '') };
@@ -435,9 +439,8 @@ async function envoyer(audio, extension) {
 
     $('entendu').textContent = `« ${j.texte} »`;
     // La langue se fixe sur la première phrase et tient toute la conversation.
-    if (!langueConversation && (j.langue_detectee === 'fr' || j.langue_detectee === 'wo')) {
-      langueConversation = j.langue_detectee;
-    }
+    // Tout ce qui n'est pas franchement du wolof est traité comme du français.
+    if (!langueConversation) langueConversation = j.langue_detectee === 'wo' ? 'wo' : 'fr';
 
     if (attendLeNom) {
       const entendu = extraireNom(j.texte);
