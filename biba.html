@@ -502,14 +502,26 @@ async function demander(question) {
   $('correction').hidden = true;
   etat('BIBA réfléchit…', true);
   try {
-    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel });
+    /* On demande la voix DANS le même envoi : elle se fabrique pendant qu'on
+       attend déjà, au lieu d'un second aller-retour une fois la réponse
+       revenue. C'est une à deux secondes de moins sur un réseau mobile. */
+    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel, avec_voix: true });
     dernier = r;
     const enFrancais = r.langue_reponse === 'fr';
     $('reponse').textContent = r.reponse || r.reponse_wo || '(pas de réponse)';
     $('reponse-fr').textContent = enFrancais ? '' : (r.reponse_fr || '');
     $('mal').hidden = enFrancais;
 
-    await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
+    // La voix est déjà là : on la joue sans rien redemander. Si elle manque,
+    // on reprend l'ancien chemin — mieux vaut une seconde de plus que le
+    // silence.
+    if (r.voix && r.voix.audio_base64) {
+      const son = $('son');
+      son.src = `data:${r.voix.type_mime || 'audio/mp4'};base64,${r.voix.audio_base64}`;
+      await jouerEtAttendre(son);
+    } else {
+      await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
+    }
     etat('Appuie pour poser une autre question');
   } catch (e) {
     // Le service dit lui-même quand le code est épuisé ou périmé : on le
