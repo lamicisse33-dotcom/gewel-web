@@ -559,6 +559,9 @@ function ecouterAvecLeTelephone() {
      coûte bien plus cher que d'attendre. */
   const RIEN_ENTENDU_MS = 2000;
   let quelqueChoseEntendu = false;
+  /* Ce navigateur nous annonce-t-il le son ? Chrome oui, Safari souvent non.
+     Tant qu'il ne nous a rien dit, son silence ne prouve rien. */
+  let navigateurBavard = false;
 
   const relancerLaMinuterie = (delai = FILET_MS) => {
     clearTimeout(minuterie);
@@ -595,8 +598,8 @@ function ecouterAvecLeTelephone() {
      n'annoncent pas ces événements du tout. */
   let voixEnCours = false;
 
-  reco.onsoundstart = () => { quelqueChoseEntendu = true; clearTimeout(minuterie); };
-  reco.onspeechstart = () => { quelqueChoseEntendu = true; voixEnCours = true; clearTimeout(minuterie); };
+  reco.onsoundstart = () => { navigateurBavard = true; quelqueChoseEntendu = true; clearTimeout(minuterie); };
+  reco.onspeechstart = () => { navigateurBavard = true; quelqueChoseEntendu = true; voixEnCours = true; clearTimeout(minuterie); };
   /* Combien de mots ont été entendus jusqu'ici : deux mots ne font pas une
      question, et on ne coupe pas quelqu'un qui commence à peine. */
   const attente = () => {
@@ -644,18 +647,34 @@ function ecouterAvecLeTelephone() {
 
   try {
     reco.start();
-    /* Deux secondes de rien du tout, et on referme — mais seulement si on n'a
-       VRAIMENT rien entendu. Certains navigateurs n'annoncent pas le son :
-       s'il est arrivé quelque chose entre-temps, on rend la main au filet
-       large plutôt que de couper la parole. */
+    /* CE QUI A RENDU BIBA SOURDE, LE 6 SEPTEMBRE AU SOIR.
+       Je fermais le micro au bout de deux secondes « si on n'avait rien
+       entendu ». Mais sur iPhone, Safari n'annonce ni « soundstart » ni
+       « speechstart », et il peut mettre plus de deux secondes à rendre le
+       premier mot. « Rien entendu » et « je n'ai pas encore compris » se
+       ressemblaient donc exactement — et on coupait la parole à quelqu'un qui
+       parlait, pour lui dire ensuite qu'on n'avait rien entendu.
+
+       La règle est maintenant : on ne conclut sur le silence que si le
+       navigateur nous a DIT quelque chose. S'il ne dit rien, on ne sait pas —
+       alors on prolonge une fois jusqu'au filet large, et on conclut seulement
+       ensuite. Un appui sans un mot ferme donc en 2 s là où le navigateur
+       parle, et en 7 s là où il se tait. Un doute ne coupe jamais la parole. */
     clearTimeout(minuterie);
-    minuterie = setTimeout(() => {
+    let prolonge = false;
+    const auSilence = () => {
       if (quelqueChoseEntendu || acquis || provisoireCourant) {
-        relancerLaMinuterie();
+        relancerLaMinuterie();          // on a entendu : filet large
+        return;
+      }
+      if (!prolonge && !navigateurBavard) {
+        prolonge = true;                // il ne nous dit rien : on ne devine pas
+        minuterie = setTimeout(auSilence, FILET_MS);
         return;
       }
       conclure();
-    }, RIEN_ENTENDU_MS);
+    };
+    minuterie = setTimeout(auSilence, RIEN_ENTENDU_MS);
   } catch {
     versLEnregistrement();
   }
