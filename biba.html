@@ -413,9 +413,14 @@ function ecouterAvecLeTelephone() {
   };
   reco.conclureMaintenant = conclure;
 
-  const relancerLaMinuterie = () => {
+  /* Deux délais, et c'est voulu. Le court sert quand le navigateur nous dit
+     que la voix s'est arrêtée : on peut conclure vite, il sait. Le long est
+     le filet pour les navigateurs qui ne disent rien — mieux vaut attendre
+     une seconde de trop que couper quelqu'un au milieu d'un mot. */
+  const FILET_MS = 5000;
+  const relancerLaMinuterie = (delai = FILET_MS) => {
     clearTimeout(minuterie);
-    minuterie = setTimeout(conclure, SILENCE_MS);
+    minuterie = setTimeout(() => { if (!voixEnCours) conclure(); }, delai);
   };
 
   const versLEnregistrement = () => {
@@ -431,6 +436,32 @@ function ecouterAvecLeTelephone() {
   etat('Je t’écoute…');
   $('entendu').textContent = '';
 
+  /* CE QUI FAISAIT COUPER LA PAROLE.
+     Je comptais le silence à partir du dernier MOT RECONNU. Or entre deux
+     mots, le navigateur peut rester deux secondes sans rien rendre —
+     surtout quand on parle lentement, qu'on cherche ses mots, ou qu'il
+     regroupe avant de répondre. Il croyait au silence pendant qu'on parlait
+     encore, et coupait au milieu de la phrase.
+
+     Le navigateur sait pourtant écouter le SON, pas seulement les mots :
+     « soundstart » quand quelque chose arrive au micro, « speechstart »
+     quand il reconnaît une voix, « speechend » quand elle s'arrête. Tant
+     qu'une voix porte, on n'a rien à décider — c'est seulement quand elle
+     s'arrête vraiment que le compte à rebours commence.
+
+     Le compteur des mots reste, mais en filet large : certains navigateurs
+     n'annoncent pas ces événements du tout. */
+  let voixEnCours = false;
+
+  reco.onsoundstart = () => { clearTimeout(minuterie); };
+  reco.onspeechstart = () => { voixEnCours = true; clearTimeout(minuterie); };
+  reco.onspeechend = () => {
+    // Là, la voix s'est vraiment arrêtée : c'est le bon moment pour compter.
+    voixEnCours = false;
+    relancerLaMinuterie(SILENCE_MS);
+  };
+  reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(SILENCE_MS); };
+
   reco.onresult = (e) => {
     let provisoire = '';
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
@@ -442,7 +473,7 @@ function ecouterAvecLeTelephone() {
     // attend sans s'impatienter.
     const enCours = (acquis + provisoire).trim();
     if (enCours) $('entendu').textContent = `« ${enCours} »`;
-    relancerLaMinuterie();
+    relancerLaMinuterie();      // filet large : un mot ne prouve pas la fin
   };
 
   reco.onerror = (e) => {
