@@ -158,7 +158,9 @@ function finir() {
 function phrase(cle, nom) {
   const p = phrases[cle] || {};
   // Le wolof, seulement si on est sûr que c'est la langue de la personne.
-  const wo = langueConversation === 'wo' ? (p.wo || '').trim() : '';
+  /* Le wolof dès qu'on n'est pas certain du contraire. Tant que personne n'a
+     parlé, la conversation est en wolof : c'est la langue de la maison. */
+  const wo = langueConversation !== 'fr' ? (p.wo || '').trim() : '';
   const texte = wo || p.fr || '';
   return { texte: texte.replace('{nom}', nom || ''), langue: wo ? 'wo' : 'fr',
            fr: (p.fr || '').replace('{nom}', nom || '') };
@@ -788,9 +790,11 @@ async function envoyer(audio, extension) {
 async function recuTexte(texte, langueDetectee) {
   $('entendu').textContent = `« ${texte} »`;
   /* La langue se fixe sur la première phrase et tient toute la conversation.
-     Tout ce qui n'est pas franchement du wolof est traité comme du français —
-     et ce que le téléphone reconnaît, il l'a reconnu en français. */
-  if (!langueConversation) langueConversation = langueDetectee === 'wo' ? 'wo' : 'fr';
+     LE WOLOF EST LA LANGUE DE BIBA : seul un français franc la fait basculer
+     en français. Répondre en français à quelqu'un qui parle wolof n'a aucun
+     intérêt — il a déjà dix assistantes françaises. L'inverse est une gêne,
+     pas un échec. */
+  if (!langueConversation) langueConversation = langueDetectee === 'fr' ? 'fr' : 'wo';
 
   if (attendLeNom) {
     const entendu = extraireNom(texte);
