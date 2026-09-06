@@ -257,6 +257,7 @@ function direAvecLeTelephone(texte, langue) {
     window.speechSynthesis.cancel();
     const phrase = new SpeechSynthesisUtterance(texte);
     phrase.lang = 'fr-FR';
+    phrase.rate = DEBIT;          // la voix de secours parle au débit de BIBA
     window.speechSynthesis.speak(phrase);
     etat('Voix du téléphone — celle de KHALAM est indisponible');
     return true;
@@ -356,6 +357,39 @@ function arreterLaParole() {
   if (finDeParole) finDeParole();
 }
 
+/* ── LE DÉBIT DE BIBA ──────────────────────────────────────────────────────
+   « Elle parle trop vite. » — Lamine, 6 septembre 2026.
+
+   On ralentit à la LECTURE, pas à la fabrication. C'est important : les voix
+   déjà fabriquées attendent sur le disque permanent, rangées sous la clef de
+   leur texte. Changer la vitesse au moment de la synthèse aurait changé cette
+   clef — les 150 phrases déjà payées seraient devenues introuvables, et
+   BIBA les aurait toutes rachetées à Soynade. C'est l'erreur qui a coûté
+   environ 1 750 FCFA à chaque déploiement le 5 septembre ; je ne la refais
+   pas.
+
+   Ici, rien n'est refabriqué, rien n'est repayé, et le réglage vaut aussi
+   bien pour la voix de KHALAM que pour celle du téléphone.
+
+   « preservesPitch » n'est pas un détail : sans lui, ralentir descendrait la
+   voix dans les graves et BIBA ne serait plus la même personne. Avec lui, le
+   grain reste identique — seul le débit change.
+
+   Le prix, et il est réel : une réponse de 200 caractères met environ un
+   dixième de temps en plus à être dite. */
+const DEBIT = 0.9;
+
+/** Règle le débit d'un son, sans toucher à la hauteur de la voix. */
+function auBonDebit(son) {
+  try {
+    son.preservesPitch = true;
+    son.mozPreservesPitch = true;
+    son.webkitPreservesPitch = true;
+    son.playbackRate = DEBIT;
+  } catch { /* un navigateur qui refuse parlera à sa vitesse : ce n'est pas grave */ }
+  return son;
+}
+
 function jouerEtAttendre(son) {
   return new Promise((fini) => {
     let rendu = false;
@@ -366,7 +400,7 @@ function jouerEtAttendre(son) {
     enTrainDeParler = true; finDeParole = rendre;
     son.onended = rendre; son.onerror = rendre;
     setTimeout(rendre, 45000);
-    son.play().catch(rendre);
+    auBonDebit(son).play().catch(rendre);
   });
 }
 
