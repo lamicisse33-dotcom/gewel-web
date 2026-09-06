@@ -158,12 +158,26 @@ const motsDe = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length
    lieu de trente secondes. Elle finit quand même — sinon un prénom resterait
    pour toujours sur un téléphone posé — mais avec un délai fait pour
    quelqu'un qui écrit, pas pour quelqu'un qui est parti. */
+/* ── PROVISOIRE — À RETIRER QUAND LA BASE WOLOF SERA RELUE ─────────────
+   Demande de Lamine, 6 septembre 2026 : « c'est juste pour le temps de faire
+   des corrections, c'est quelque chose que tu dois remettre plus tard. »
+
+   Pendant qu'il relit le wolof de BIBA, il lui faut le temps de copier le
+   français, d'aller le retravailler ailleurs et de revenir coller. Les trente
+   secondes normales fermaient la fenêtre en pleine correction.
+
+   POUR REVENIR À L'ÉTAT NORMAL : passer PHASE_DE_CORRECTION à false. C'est le
+   seul geste à faire — rien d'autre ne dépend de cette phase. La fenêtre de
+   correction, elle, RESTE : c'est elle qui fait grandir la base. Seul le
+   sursis de dix minutes disparaît, et une conversation se termine de nouveau
+   trente secondes après le dernier mot. */
+const PHASE_DE_CORRECTION = true;
 const FIN_PENDANT_CORRECTION_MS = 600000;
 let enCorrection = false;
 
 function relancer() {
   clearTimeout(minuteurFin);
-  minuteurFin = setTimeout(finir, enCorrection ? FIN_PENDANT_CORRECTION_MS : FIN_CONVERSATION_MS);
+  minuteurFin = setTimeout(finir, (enCorrection && PHASE_DE_CORRECTION) ? FIN_PENDANT_CORRECTION_MS : FIN_CONVERSATION_MS);
 }
 function suspendre() { clearTimeout(minuteurFin); }
 function finir() {
