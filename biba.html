@@ -437,7 +437,7 @@ function micActif(actif) {
    jamais démarrer : le silence, le « on n'a rien dit », et une horloge qui ne
    dépend d'aucun son. Sans le dernier, le micro resterait ouvert sans fin. */
 function surveiller(fluxAudio, arreter, rapport) {
-  const SANS_UN_MOT_MS = 6000;
+  const SANS_UN_MOT_MS = 2000;   // appuyé, et pas un son : on referme
   const DUREE_MAX = 30000;
   const bouton = $('micro');
   let termine = false, horloge = null, boucle = null, ctx = null;
@@ -584,6 +584,16 @@ function ecouterAvecLeTelephone() {
      le filet pour les navigateurs qui ne disent rien — mieux vaut attendre
      une seconde de trop que couper quelqu'un au milieu d'un mot. */
   const FILET_MS = 5000;
+  /* On a appuyé et il ne se passe rien : ni son, ni mot, ni voix. Inutile de
+     laisser le micro ouvert cinq secondes — c'est cinq secondes où l'on croit
+     que ça a planté. Deux secondes suffisent pour savoir que personne ne parle.
+
+     Ce délai-là ne s'applique QU'AVANT le premier son. Dès qu'on a entendu
+     quelque chose, on repasse au filet large : couper quelqu'un qui parle
+     coûte bien plus cher que d'attendre. */
+  const RIEN_ENTENDU_MS = 2000;
+  let quelqueChoseEntendu = false;
+
   const relancerLaMinuterie = (delai = FILET_MS) => {
     clearTimeout(minuterie);
     minuterie = setTimeout(() => { if (!voixEnCours) conclure(); }, delai);
@@ -619,8 +629,8 @@ function ecouterAvecLeTelephone() {
      n'annoncent pas ces événements du tout. */
   let voixEnCours = false;
 
-  reco.onsoundstart = () => { clearTimeout(minuterie); };
-  reco.onspeechstart = () => { voixEnCours = true; clearTimeout(minuterie); };
+  reco.onsoundstart = () => { quelqueChoseEntendu = true; clearTimeout(minuterie); };
+  reco.onspeechstart = () => { quelqueChoseEntendu = true; voixEnCours = true; clearTimeout(minuterie); };
   /* Combien de mots ont été entendus jusqu'ici : deux mots ne font pas une
      question, et on ne coupe pas quelqu'un qui commence à peine. */
   const attente = () => {
@@ -637,6 +647,7 @@ function ecouterAvecLeTelephone() {
   reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(attente()); };
 
   reco.onresult = (e) => {
+    quelqueChoseEntendu = true;
     let provisoire = '';
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
       const morceau = e.results[i][0].transcript;
@@ -667,7 +678,18 @@ function ecouterAvecLeTelephone() {
 
   try {
     reco.start();
-    relancerLaMinuterie();
+    /* Deux secondes de rien du tout, et on referme — mais seulement si on n'a
+       VRAIMENT rien entendu. Certains navigateurs n'annoncent pas le son :
+       s'il est arrivé quelque chose entre-temps, on rend la main au filet
+       large plutôt que de couper la parole. */
+    clearTimeout(minuterie);
+    minuterie = setTimeout(() => {
+      if (quelqueChoseEntendu || acquis || provisoireCourant) {
+        relancerLaMinuterie();
+        return;
+      }
+      conclure();
+    }, RIEN_ENTENDU_MS);
   } catch {
     versLEnregistrement();
   }
