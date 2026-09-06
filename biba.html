@@ -367,10 +367,117 @@ function format() {
 }
 const EXT = { 'audio/mp4':'m4a', 'audio/webm':'webm', 'audio/ogg':'ogg' };
 
+/* ── Le téléphone écrit pendant qu'on parle ────────────────────────────────
+   Le chemin normal envoie l'enregistrement entier à un service qui le
+   transcrit : deux à quatre secondes après qu'on a fini de parler. Le
+   téléphone, lui, sait reconnaître le français TOUT SEUL, pendant qu'on parle.
+   Quand on se tait, le texte est déjà écrit — et les mots s'affichent au fur
+   et à mesure, ce qui change tout : on voit que ça marche.
+
+   Le wolof n'est pas concerné : aucun navigateur ne le reconnaît. Il garde le
+   chemin d'avant, inchangé.
+
+   Trois filets, parce que ce mécanisme est capricieux :
+   - il n'existe pas partout → on retombe sur l'enregistrement ;
+   - il peut refuser en cours de route → on retombe aussi ;
+   - il n'a rien entendu → on le dit, comme avant. */
+const RecoNavigateur = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recoEnCours = null;
+
+function ecouterAvecLeTelephone() {
+  const reco = new RecoNavigateur();
+  recoEnCours = reco;
+  reco.lang = 'fr-FR';
+  reco.maxAlternatives = 1;
+  /* Sans « continuous », le navigateur coupe à la première respiration : une
+     phrase de deux secondes suffit à le faire abandonner. On garde la main. */
+  reco.continuous = true;
+  reco.interimResults = true;
+
+  let acquis = '';
+  let minuterie = null;
+  let fini = false;
+
+  const conclure = () => {
+    if (fini) return;
+    fini = true;
+    clearTimeout(minuterie);
+    try { reco.stop(); } catch { /* déjà arrêté */ }
+    micActif(false);
+    recoEnCours = null;
+    const texte = acquis.trim();
+    if (!texte) { etat('Rien entendu. Appuie et parle.'); relancer(); return; }
+    etat('BIBA réfléchit…', true);
+    // « fr » : c'est le français que le téléphone vient de reconnaître.
+    recuTexte(texte, 'fr').catch((e) => etat(e.message)).finally(relancer);
+  };
+  reco.conclureMaintenant = conclure;
+
+  const relancerLaMinuterie = () => {
+    clearTimeout(minuterie);
+    minuterie = setTimeout(conclure, SILENCE_MS);
+  };
+
+  const versLEnregistrement = () => {
+    if (fini) return;
+    fini = true;
+    clearTimeout(minuterie);
+    try { reco.stop(); } catch { /* déjà arrêté */ }
+    recoEnCours = null;
+    ecouter();                       // le chemin d'avant, intact
+  };
+
+  micActif(true);
+  etat('Je t’écoute…');
+  $('entendu').textContent = '';
+
+  reco.onresult = (e) => {
+    let provisoire = '';
+    for (let i = e.resultIndex; i < e.results.length; i += 1) {
+      const morceau = e.results[i][0].transcript;
+      if (e.results[i].isFinal) acquis += morceau + ' ';
+      else provisoire += morceau;
+    }
+    // Les mots s'affichent pendant qu'on parle : c'est ce qui fait qu'on
+    // attend sans s'impatienter.
+    const enCours = (acquis + provisoire).trim();
+    if (enCours) $('entendu').textContent = `« ${enCours} »`;
+    relancerLaMinuterie();
+  };
+
+  reco.onerror = (e) => {
+    if (e.error === 'aborted' || fini) return;
+    if (e.error === 'no-speech') { relancerLaMinuterie(); return; }
+    // Refus, langue absente, service indisponible : on reprend le chemin sûr.
+    versLEnregistrement();
+  };
+
+  /* Le navigateur referme parfois la session tout seul. Tant que la personne
+     n'a pas fini, on la rouvre : c'est ce qui permet une phrase longue. */
+  reco.onend = () => {
+    if (fini) { micActif(false); recoEnCours = null; return; }
+    try { reco.start(); } catch { conclure(); }
+  };
+
+  try {
+    reco.start();
+    relancerLaMinuterie();
+  } catch {
+    versLEnregistrement();
+  }
+}
+
 $('micro').onclick = async () => {
+  if (recoEnCours) { recoEnCours.conclureMaintenant(); return; }  // second appui
   if (enregistreur) { enregistreur.stop(); return; }   // second appui : on coupe
   arreterLaParole();        // elle parlait : on lui coupe la parole pour écouter
   suspendre();
+
+  /* Le français par le téléphone, quand il sait faire. Le wolof passe par
+     l'enregistrement : aucun navigateur ne le reconnaît. Tant qu'on ne sait
+     pas encore à qui on parle, on essaie le téléphone — le français est le
+     défaut, et s'il se trompe on l'entendra dans ce qui s'affiche. */
+  if (RecoNavigateur && langueConversation !== 'wo') return ecouterAvecLeTelephone();
   return ecouter();
 };
 
@@ -451,50 +558,59 @@ async function envoyer(audio, extension) {
     if (!r.ok) { etat(j.erreur || `Le service a répondu ${r.status}`); return; }
     if (j.etat !== 'ok' || !j.texte) { etat(j.message || 'Rien entendu. Reprends plus près.'); return; }
 
-    $('entendu').textContent = `« ${j.texte} »`;
-    // La langue se fixe sur la première phrase et tient toute la conversation.
-    // Tout ce qui n'est pas franchement du wolof est traité comme du français.
-    if (!langueConversation) langueConversation = j.langue_detectee === 'wo' ? 'wo' : 'fr';
-
-    if (attendLeNom) {
-      const entendu = extraireNom(j.texte);
-      if (!entendu) { await direPhrase('nom_pas_compris'); relancer(); return; }
-      let nom = entendu;
-      try {
-        const p = await appel('/api/prenom', { prenom: entendu });
-        if (p && p.prenom) nom = p.prenom;
-      } catch { /* le service dort : on garde ce qu'on a entendu */ }
-      attendLeNom = false;
-      nomActuel = nom;
-      $('qui').textContent = `BIBA parle à ${nom}`;
-      $('qui').hidden = false;
-      await direPhrase('accueil', nom);
-      const enAttente = questionEnAttente;
-      questionEnAttente = '';
-      if (enAttente) { await demander(enAttente); relancer(); return; }
-      etat('Appuie pour poser ta question');
-      relancer();
-      return;
-    }
-
-    /* Personne ne s'est encore nommé : avant de répondre, BIBA dit qui elle est
-       et demande à qui elle parle. La question attend son tour. */
-    if (!nomActuel && phrases.presentation) {
-      attendLeNom = true;
-      questionEnAttente = motsDe(j.texte) >= 2 ? j.texte : '';
-      etat('Appuie et dis ton nom');
-      await direPhrase('presentation');
-      relancer();
-      return;
-    }
-
-    await demander(j.texte);
-    relancer();
+    await recuTexte(j.texte, j.langue_detectee);
   } catch (e) {
     etat(e.message);
   } finally {
     relancer();
   }
+}
+
+/* Ce qui suit ne dépend plus de la FAÇON dont on a entendu : que le texte
+   vienne du téléphone, qui écrit pendant qu'on parle, ou du service, qui
+   transcrit un enregistrement, la conversation continue pareil. Un seul
+   chemin, donc un seul endroit où se tromper. */
+async function recuTexte(texte, langueDetectee) {
+  $('entendu').textContent = `« ${texte} »`;
+  /* La langue se fixe sur la première phrase et tient toute la conversation.
+     Tout ce qui n'est pas franchement du wolof est traité comme du français —
+     et ce que le téléphone reconnaît, il l'a reconnu en français. */
+  if (!langueConversation) langueConversation = langueDetectee === 'wo' ? 'wo' : 'fr';
+
+  if (attendLeNom) {
+    const entendu = extraireNom(texte);
+    if (!entendu) { await direPhrase('nom_pas_compris'); relancer(); return; }
+    let nom = entendu;
+    try {
+      const p = await appel('/api/prenom', { prenom: entendu });
+      if (p && p.prenom) nom = p.prenom;
+    } catch { /* le service dort : on garde ce qu'on a entendu */ }
+    attendLeNom = false;
+    nomActuel = nom;
+    $('qui').textContent = `BIBA parle à ${nom}`;
+    $('qui').hidden = false;
+    await direPhrase('accueil', nom);
+    const enAttente = questionEnAttente;
+    questionEnAttente = '';
+    if (enAttente) { await demander(enAttente); relancer(); return; }
+    etat('Appuie pour poser ta question');
+    relancer();
+    return;
+  }
+
+  /* Personne ne s'est encore nommé : avant de répondre, BIBA dit qui elle est
+     et demande à qui elle parle. La question attend son tour. */
+  if (!nomActuel && phrases.presentation) {
+    attendLeNom = true;
+    questionEnAttente = motsDe(texte) >= 2 ? texte : '';
+    etat('Appuie et dis ton nom');
+    await direPhrase('presentation');
+    relancer();
+    return;
+  }
+
+  await demander(texte);
+  relancer();
 }
 
 async function demander(question) {
