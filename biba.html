@@ -888,8 +888,12 @@ $('envoyer').onclick = async () => {
   if (corrigee === (dernier.reponse_wo || '')) { etat('Rien n’a changé'); return; }
   $('envoyer').disabled = true;
   try {
-    await appel('/api/corriger', {
+    /* La QUESTION part avec la correction : sans elle, on corrige le lexique
+       mais BIBA repose la même question à Claude la fois suivante. Avec elle,
+       elle rend votre phrase, sans intelligence artificielle. */
+    const r = await appel('/api/corriger', {
       source: dernier.reponse_fr, proposee: dernier.reponse_wo, corrigee,
+      question: dernier.question, question_fr: dernier.reponse_fr,
       langue_source: 'fr', id_echange: dernier.id_echange, auteur: 'BIBA',
     });
     $('reponse').textContent = corrigee;
@@ -897,7 +901,9 @@ $('envoyer').onclick = async () => {
     $('correction').hidden = true;
     $('reponse-fr').hidden = false;
     $('mal').hidden = true;
-    etat('Merci — c’est enregistré');
+    etat(r && r.base_biba && r.base_biba.servie
+      ? 'Enregistré — BIBA dira ta phrase la prochaine fois'
+      : 'Merci — c’est enregistré');
   } catch (e) {
     etat(e.message);
   } finally {
