@@ -535,6 +535,7 @@ function ecouterAvecLeTelephone() {
     if (fini) return;
     fini = true;
     clearTimeout(minuterie);
+    clearTimeout(filetSourd);
     try { reco.stop(); } catch { /* déjà arrêté */ }
     micActif(false);
     recoEnCours = null;
@@ -580,10 +581,28 @@ function ecouterAvecLeTelephone() {
     minuterie = setTimeout(() => { if (!voixEnCours) conclure(); }, SILENCE_APRES_VOIX_MS);
   };
 
+  /* LE FILET QUI MANQUAIT, ET QUI A RENDU BIBA SOURDE.
+     La règle de Lamine dit : ne jamais fermer le micro avant d'avoir entendu
+     une voix. Elle ne dit pas : rester sourd pour toujours. Or sur ce
+     chemin-ci, la seule oreille est celle du navigateur — s'il ne rend rien,
+     on ne mesure rien, et on attendait sans fin.
+
+     Alors on ne ferme pas : ON CHANGE D'OREILLE. Au bout de quelques
+     secondes sans le moindre signe, on passe à l'enregistrement, qui écoute
+     le son lui-même. Le micro ne s'est pas refermé une seconde, et personne
+     n'a été coupé — rien n'avait été entendu. */
+  const CHANGER_D_OREILLE_MS = 4000;
+  const filetSourd = setTimeout(() => {
+    if (fini || voixEntendue) return;
+    console.log('[micro] le téléphone ne rend rien : on écoute autrement');
+    versLEnregistrement();
+  }, CHANGER_D_OREILLE_MS);
+
   const versLEnregistrement = () => {
     if (fini) return;
     fini = true;
     clearTimeout(minuterie);
+    clearTimeout(filetSourd);
     try { reco.stop(); } catch { /* déjà arrêté */ }
     recoEnCours = null;
     ecouter();                       // le chemin d'avant, intact
@@ -610,8 +629,8 @@ function ecouterAvecLeTelephone() {
      n'annoncent pas ces événements du tout. */
   let voixEnCours = false;
 
-  reco.onsoundstart = () => { voixEntendue = true; clearTimeout(minuterie); };
-  reco.onspeechstart = () => { voixEntendue = true; voixEnCours = true; clearTimeout(minuterie); };
+  reco.onsoundstart = () => { voixEntendue = true; clearTimeout(filetSourd); clearTimeout(minuterie); };
+  reco.onspeechstart = () => { voixEntendue = true; voixEnCours = true; clearTimeout(filetSourd); clearTimeout(minuterie); };
   reco.onspeechend = () => {
     // Là, la voix s'est vraiment arrêtée : c'est le bon moment pour compter.
     voixEnCours = false;
@@ -624,6 +643,7 @@ function ecouterAvecLeTelephone() {
        mot qui arrive est alors la SEULE preuve qu'une voix existe. C'est ici
        que la minuterie des deux secondes se met à tourner, pas avant. */
     voixEntendue = true;
+    clearTimeout(filetSourd);
     let provisoire = '';
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
       const morceau = e.results[i][0].transcript;
@@ -679,7 +699,27 @@ $('micro').onclick = async () => {
      l'enregistrement : aucun navigateur ne le reconnaît. Tant qu'on ne sait
      pas encore à qui on parle, on essaie le téléphone — le français est le
      défaut, et s'il se trompe on l'entendra dans ce qui s'affiche. */
-  if (RecoNavigateur && !telephoneEcouteMal && langueConversation !== 'wo') {
+  /* ── LE PREMIER APPUI NE PASSE PLUS PAR L'OREILLE DU TÉLÉPHONE ──────
+     Trouvé au banc d'essai le 6 septembre, après que Lamine a dit « on dirait
+     qu'elle n'entend rien ». C'était vrai, et c'était de moi.
+
+     Le téléphone ne sait reconnaître QUE le français. Tant qu'on ne savait pas
+     à qui on parlait, on lui confiait quand même la première phrase — et pour
+     quelqu'un qui parle wolof, il ne rend souvent RIEN. Or depuis que le micro
+     attend une voix au lieu de se fermer sur un délai, « rien » veut dire que
+     le micro reste ouvert pour toujours : la conversation ne pouvait pas
+     commencer. Mesuré au banc : à 8 secondes, toujours « Je t'écoute… », et
+     aucun repli.
+
+     Donc l'inverse. On n'utilise l'oreille du téléphone QUE lorsqu'on sait
+     déjà que la conversation est en français. La première phrase — celle dont
+     on ignore la langue, et c'est justement celle d'un wolophone — passe par
+     l'enregistrement, qui écoute le SON et sait entendre le wolof.
+
+     Le prix : la première question d'une conversation française perd les deux
+     à trois secondes que faisait gagner le téléphone. Les suivantes les
+     retrouvent. Le wolof, lui, gagne de pouvoir commencer. */
+  if (RecoNavigateur && !telephoneEcouteMal && langueConversation === 'fr') {
     return ecouterAvecLeTelephone();
   }
   return ecouter();
