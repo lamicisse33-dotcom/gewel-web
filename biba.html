@@ -52,75 +52,7 @@
            padding:14px; font:inherit; font-weight:700; margin-top:10px; cursor:pointer; }
   .erreur { color:#ff9d9d; }
 
-  #verrou { position:fixed; inset:0; z-index:20; background:var(--nuit); display:flex;
-            align-items:center; justify-content:center; padding:24px; }
-  #verrou .dedans { max-width:400px; width:100%; text-align:center; }
-</style>
-</head>
-<body>
-
-<div id="verrou">
-  <div class="dedans">
-    <div class="marque">K H A L A M</div>
-    <h1>BIBA</h1>
-    <p class="role" style="margin-bottom:22px">Tape le code que KHALAM t'a envoyé.</p>
-    <input id="code" type="text" autocomplete="off" autocapitalize="characters"
-           placeholder="AWA-N8YT-K89YZ" style="text-align:center; letter-spacing:1px">
-    <button class="plein" id="entrer">Entrer</button>
-    <p id="verrou-erreur" class="erreur" style="font-size:14px" hidden></p>
-  </div>
-</div>
-
-<main hidden id="appli">
-  <header>
-    <div class="marque">K H A L A M</div>
-    <h1>BIBA</h1>
-    <p class="role">Assistante virtuelle</p>
-  </header>
-
-  <div class="scene">
-    <div class="qui" id="qui" hidden></div>
-    <div class="dit" id="entendu"></div>
-    <div>
-      <div class="reponse" id="reponse">Appuie sur le micro et parle.</div>
-      <div class="reponse-fr" id="reponse-fr"></div>
-    <!-- Le chronomètre. Discret, mais il met fin aux impressions : on ne
-         discute plus de « c'est lent », on lit où part le temps. -->
-    <div id="chrono" style="font-size:11px;opacity:.35;margin-top:10px;letter-spacing:.4px"></div>
-    </div>
-    <button class="plat" id="mal" hidden>Mal traduit</button>
-    <div class="boite" id="correction" hidden>
-      <h2>Comment fallait-il le dire ?</h2>
-      <textarea id="juste" rows="3"></textarea>
-      <button class="plein" id="envoyer">Envoyer la correction</button>
-    </div>
-  </div>
-
-  <div class="commande">
-    <button class="micro" id="micro" aria-label="Parler à BIBA">
-      <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11z"/></svg>
-    </button>
-    <div class="etat">
-      <span class="balance" id="pense" hidden aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M16 8v17"/><path d="M10 25.5h12"/>
-          <g class="fleau">
-            <path d="M5 11h22"/>
-            <path d="M5 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
-            <path d="M27 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
-          </g>
-        </svg>
-      </span>
-      <span id="etat">Appuie pour parler</span>
-    </div>
-  </div>
-</main>
-
-<audio id="son" playsinline></audio>
-
-<script>
-/* Cette page est servie depuis une adresse de KHALAM ; le serveur est
+  /* Cette page est servie depuis une adresse de KHALAM ; le serveur est
    ailleurs, l'adresse d'appel doit donc être entière. Le serveur autorise
    expressément cette origine — sans quoi le navigateur bloquerait l'appel
    avant même qu'il parte. NE PAS recopier ce fichier à la main : passer par
@@ -845,7 +777,8 @@ async function recuTexte(texte, langueDetectee) {
 
 async function demander(question) {
   $('mal').hidden = true;
-  $('correction').hidden = true;
+  $('correction').hidden = true;     // une nouvelle question referme l'ancienne
+  $('reponse-fr').hidden = false;
   $('chrono').textContent = '';
   etat('BIBA réfléchit…', true);
   const depart = Date.now();
@@ -867,6 +800,12 @@ async function demander(question) {
     // commence avant d'être entièrement fabriquée.
     const tTexte = Date.now() - depart;
     await direVite(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo', r.clef_voix);
+
+    /* La réponse est en wolof : la fenêtre de correction s'ouvre maintenant,
+       pendant que la personne qui parle wolof est encore devant l'écran. On
+       attend que BIBA ait fini de parler — ouvrir pendant qu'elle parle ferait
+       sauter l'écran au milieu d'une phrase. */
+    if (!enFrancais) ouvrirCorrection();
     /* D'où vient le temps. Le total mesuré ici est celui que la personne
        ressent : il comprend l'aller-retour du réseau, que le serveur ne voit
        pas. La différence entre les deux, c'est le réseau. */
@@ -887,17 +826,66 @@ async function demander(question) {
   }
 }
 
-/* ── La correction : c'est elle qui fait grandir le lexique ───────────── */
-$('mal').onclick = () => {
+/* ── La correction : c'est elle qui fait grandir le lexique ─────────────
+   La fenêtre s'ouvre TOUTE SEULE quand la réponse est en wolof. C'est le
+   moment où quelqu'un qui parle wolof est devant l'écran ; lui demander
+   d'appuyer sur un bouton d'abord, c'est perdre la correction.
+
+   Elle montre le français EN FACE du wolof : sans la phrase d'origine, on ne
+   corrige pas une traduction, on en invente une autre. Et elle se referme dès
+   qu'on a fini — enregistré ou fermé — pour ne pas rester dans le chemin de la
+   question suivante. */
+function ouvrirCorrection() {
   if (!dernier || dernier.langue_reponse === 'fr') return;
-  $('correction').hidden = false;
+
+  const fr = (dernier.reponse_fr || '').trim();
+  const boiteFr = $('source-fr');
+  boiteFr.textContent = fr || 'BIBA a répondu directement en wolof : il n’y a pas de version française.';
+  boiteFr.classList.toggle('vide', !fr);
+  $('copier-fr').hidden = !fr;
+
+  $('source-wo').textContent = dernier.reponse_wo || dernier.reponse || '';
   $('juste').value = dernier.reponse_wo || '';
-  $('juste').focus();
+
+  $('correction').hidden = false;
+  $('mal').hidden = true;              // elle est ouverte : le bouton ne sert plus
+  // Le français est déjà dans la fenêtre : l'afficher deux fois n'apprend rien.
+  $('reponse-fr').hidden = true;
+}
+
+function fermerCorrection() {
+  $('correction').hidden = true;
+  $('reponse-fr').hidden = false;
+  // On laisse le bouton, pour pouvoir revenir sur la même réponse.
+  $('mal').hidden = !(dernier && dernier.langue_reponse !== 'fr');
+}
+
+$('mal').onclick = ouvrirCorrection;
+$('fermer-correction').onclick = () => { fermerCorrection(); etat('Appuie pour poser une autre question'); };
+
+/* Le français se copie en texte simple — jamais en fichier. Coller la phrase
+   dans un traducteur pour la retravailler est exactement l'usage prévu. */
+$('copier-fr').onclick = async () => {
+  const fr = (dernier && dernier.reponse_fr || '').trim();
+  if (!fr) return;
+  try {
+    await navigator.clipboard.writeText(fr);
+    etat('Français copié');
+  } catch {
+    const z = $('source-fr');
+    const choix = document.createRange();
+    choix.selectNodeContents(z);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(choix);
+    etat('Sélectionné — touche « Copier »');
+  }
 };
 
 $('envoyer').onclick = async () => {
   const corrigee = $('juste').value.trim();
-  if (!dernier || !corrigee) return;
+  if (!dernier || !corrigee) { etat('Écris d’abord le bon wolof'); return; }
+  if (corrigee === (dernier.reponse_wo || '')) { etat('Rien n’a changé'); return; }
   $('envoyer').disabled = true;
   try {
     await appel('/api/corriger', {
@@ -905,7 +893,9 @@ $('envoyer').onclick = async () => {
       langue_source: 'fr', id_echange: dernier.id_echange, auteur: 'BIBA',
     });
     $('reponse').textContent = corrigee;
+    dernier.reponse_wo = corrigee;
     $('correction').hidden = true;
+    $('reponse-fr').hidden = false;
     $('mal').hidden = true;
     etat('Merci — c’est enregistré');
   } catch (e) {
