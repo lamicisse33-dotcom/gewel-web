@@ -232,6 +232,37 @@ async function voixDejaPrete(clef) {
   } catch { return null; }
 }
 
+/* ── Ne jamais rester muette ───────────────────────────────────────────────
+   Le 6 septembre au soir, le crédit de la voix s'est épuisé et BIBA s'est
+   tue. Rien à l'écran ne disait pourquoi : on croyait l'application cassée.
+
+   Le téléphone sait lire un texte tout seul, gratuitement. En français sa
+   voix est correcte — moins belle que celle de KHALAM, mais elle parle. En
+   wolof, non : il prononcerait le wolof avec une bouche française, et c'est
+   la béquille que nous avons justement abandonnée. Alors on ne fait pas
+   semblant : on laisse le texte à l'écran et on dit franchement que la voix
+   est indisponible.
+
+   Une voix de secours n'est pas un mensonge tant qu'elle s'annonce. */
+function direAvecLeTelephone(texte, langue) {
+  if (!texte) return false;
+  if (langue !== 'fr' || !('speechSynthesis' in window)) {
+    etat('La voix est indisponible — le texte est à l’écran');
+    return false;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const phrase = new SpeechSynthesisUtterance(texte);
+    phrase.lang = 'fr-FR';
+    window.speechSynthesis.speak(phrase);
+    etat('Voix du téléphone — celle de KHALAM est indisponible');
+    return true;
+  } catch {
+    etat('La voix est indisponible — le texte est à l’écran');
+    return false;
+  }
+}
+
 async function jouerMorceau(r) {
   if (!r || !r.audio_base64) return false;
   const son = $('son');
@@ -260,11 +291,13 @@ async function direVite(texte, langue, clefPrete) {
     : null;
   try {
     const premier = await appel('/api/voix', { texte: debut, langue, voix: 'femme' });
-    if (!(await jouerMorceau(premier))) {
-      etat('La voix n’a rien renvoyé — le texte est à l’écran');
-    }
+    if (!(await jouerMorceau(premier))) direAvecLeTelephone(texte, langue);
   } catch (e) {
-    etat(`Sans la voix : ${e.message}`);
+    /* Le service a refusé — crédit épuisé, surcharge, réseau. Il le dit en
+       français : on garde SA phrase, elle est plus utile que la mienne. */
+    etat(e.message);
+    direAvecLeTelephone(texte, langue);
+    return;                            // inutile d'attendre le second morceau
   }
   if (promesseReste) await jouerMorceau(await promesseReste);
 }
@@ -275,12 +308,13 @@ async function direAVoixHaute(texte, langue) {
   if (!texte) return;
   try {
     const r = await appel('/api/voix', { texte, langue, voix: 'femme' });
-    if (!r.audio_base64) { etat('La voix n’a rien renvoyé — le texte est à l’écran'); return; }
+    if (!r.audio_base64) { direAvecLeTelephone(texte, langue); return; }
     const son = $('son');
     son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
     await jouerEtAttendre(son);
   } catch (e) {
-    etat(`Sans la voix : ${e.message}`);
+    etat(e.message);
+    direAvecLeTelephone(texte, langue);
   }
 }
 
