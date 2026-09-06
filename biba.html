@@ -285,6 +285,21 @@ function couperEnDeux(texte, seuil = 110) {
   return [t, ''];
 }
 
+/* La voix déjà fabriquée se prend par son nom, en GET.
+   Un POST ne se met pas en cache ; un fichier, si. La deuxième fois qu'on
+   pose la même question, l'audio ne quitte plus le téléphone : il est dans
+   le cache du navigateur, marqué immuable pour un an. C'est ce qui fait la
+   différence entre « rapide » et « instantané ». */
+async function voixDejaPrete(clef) {
+  if (!clef) return null;
+  try {
+    const r = await fetch(`${SERVEUR}/api/voix-prete/${clef}`, { headers: { 'x-code-acces': code } });
+    if (!r.ok) return null;                      // pas encore fabriquée : chemin normal
+    const blob = await r.blob();
+    return { url: URL.createObjectURL(blob) };
+  } catch { return null; }
+}
+
 async function jouerMorceau(r) {
   if (!r || !r.audio_base64) return false;
   const son = $('son');
@@ -293,8 +308,19 @@ async function jouerMorceau(r) {
   return true;
 }
 
-async function direVite(texte, langue) {
+async function direVite(texte, langue, clefPrete) {
   if (!texte) return;
+
+  /* Le circuit court : la phrase entière est déjà en voix sur le serveur.
+     Rien à fabriquer, rien à découper — on lit un fichier. */
+  const prete = await voixDejaPrete(clefPrete);
+  if (prete) {
+    const son = $('son');
+    son.src = prete.url;
+    try { await jouerEtAttendre(son); } finally { URL.revokeObjectURL(prete.url); }
+    return;
+  }
+
   const [debut, reste] = couperEnDeux(texte);
   // Les deux partent en même temps. Rien n'attend son tour pour être demandé.
   const promesseReste = reste
@@ -818,7 +844,7 @@ async function demander(question) {
     // Maintenant seulement, la voix — et en deux morceaux, pour qu'elle
     // commence avant d'être entièrement fabriquée.
     const tTexte = Date.now() - depart;
-    await direVite(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
+    await direVite(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo', r.clef_voix);
     /* D'où vient le temps. Le total mesuré ici est celui que la personne
        ressent : il comprend l'aller-retour du réseau, que le serveur ne voit
        pas. La différence entre les deux, c'est le réseau. */
