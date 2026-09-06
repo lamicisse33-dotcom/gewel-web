@@ -84,6 +84,9 @@
     <div>
       <div class="reponse" id="reponse">Appuie sur le micro et parle.</div>
       <div class="reponse-fr" id="reponse-fr"></div>
+    <!-- Le chronomètre. Discret, mais il met fin aux impressions : on ne
+         discute plus de « c'est lent », on lit où part le temps. -->
+    <div id="chrono" style="font-size:11px;opacity:.35;margin-top:10px;letter-spacing:.4px"></div>
     </div>
     <button class="plat" id="mal" hidden>Mal traduit</button>
     <div class="boite" id="correction" hidden>
@@ -671,7 +674,9 @@ async function recuTexte(texte, langueDetectee) {
 async function demander(question) {
   $('mal').hidden = true;
   $('correction').hidden = true;
+  $('chrono').textContent = '';
   etat('BIBA réfléchit…', true);
+  const depart = Date.now();
   try {
     /* On demande la voix DANS le même envoi : elle se fabrique pendant qu'on
        attend déjà, au lieu d'un second aller-retour une fois la réponse
@@ -693,6 +698,16 @@ async function demander(question) {
     } else {
       await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
     }
+    /* D'où vient le temps. Le total mesuré ici est celui que la personne
+       ressent : il comprend l'aller-retour du réseau, que le serveur ne voit
+       pas. La différence entre les deux, c'est le réseau. */
+    const t = r.temps || {};
+    const s = (ms) => (ms / 1000).toFixed(1);
+    $('chrono').textContent = t.total_ms
+      ? `${s(Date.now() - depart)} s — réflexion ${s(t.reflexion_ms)} · `
+        + `voix ${s(t.voix_ms)} · réseau ${s(Math.max(0, (Date.now() - depart) - t.total_ms))}`
+      : `${s(Date.now() - depart)} s`;
+
     etat('Appuie pour poser une autre question');
   } catch (e) {
     // Le service dit lui-même quand le code est épuisé ou périmé : on le
