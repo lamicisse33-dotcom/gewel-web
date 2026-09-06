@@ -155,6 +155,43 @@ function etat(texte, pense = false) {
   $('pense').dataset.actif = pense ? 'oui' : 'non';
 }
 
+/* ── « J'ai compris, je prépare » ──────────────────────────────────────────
+   Entre le moment où l'on se tait et celui où BIBA parle, il reste des
+   secondes. Elles paraissent bien plus longues quand rien ne bouge : on croit
+   que ça a planté, on réappuie, on repart de zéro.
+
+   Deux notes courtes, fabriquées par le téléphone lui-même — pas de fichier à
+   télécharger, pas d'aller-retour, quelques millisecondes. Elles disent
+   exactement une chose : « ta question est prise ». Le reste de l'attente est
+   la même, mais on sait qu'elle sert à quelque chose.
+
+   Le son n'est jamais indispensable : s'il échoue, la balance qui pense reste
+   à l'écran, et rien ne casse. */
+let sonnerie = null;
+
+function bipCompris() {
+  try {
+    const Contexte = window.AudioContext || window.webkitAudioContext;
+    if (!Contexte) return;
+    sonnerie = sonnerie || new Contexte();
+    if (sonnerie.state === 'suspended') sonnerie.resume();
+    const t = sonnerie.currentTime;
+    // Deux notes qui montent : on entend « reçu », pas « erreur ».
+    [[880, 0], [1174, 0.09]].forEach(([frequence, decalage]) => {
+      const o = sonnerie.createOscillator();
+      const g = sonnerie.createGain();
+      o.type = 'sine';
+      o.frequency.value = frequence;
+      g.gain.setValueAtTime(0.0001, t + decalage);
+      g.gain.exponentialRampToValueAtTime(0.12, t + decalage + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + decalage + 0.085);
+      o.connect(g).connect(sonnerie.destination);
+      o.start(t + decalage);
+      o.stop(t + decalage + 0.1);
+    });
+  } catch { /* sans le bip, la balance suffit */ }
+}
+
 /* ── La conversation ──────────────────────────────────────────────────── */
 const FIN_CONVERSATION_MS = 30000;
 let phrases = {};
@@ -214,6 +251,64 @@ async function annoncer(message) {
   $('reponse').textContent = message;
   $('reponse-fr').textContent = '';
   await direAVoixHaute(message, 'fr');
+}
+
+/* ── Parler vite ───────────────────────────────────────────────────────────
+   Mesuré depuis Dakar, sur le vrai serveur : la voix coûte environ deux
+   secondes fixes, plus 36 millisecondes par caractère. Une réponse de 271
+   caractères mettait donc douze secondes à se fabriquer — et pendant ces
+   douze secondes, rien. Ni son, ni texte.
+
+   Deux corrections, ici :
+
+   1. On ne demande plus la voix en même temps que la réponse. Le texte
+      s'affiche dès qu'il est écrit (deux secondes et demie), au lieu
+      d'attendre que tout l'audio soit prêt (neuf secondes).
+
+   2. On coupe la réponse à la première phrase. Les deux morceaux partent
+      ENSEMBLE ; le premier revient plus vite parce qu'il est plus court, et
+      BIBA commence à parler pendant que la suite se fabrique encore. Le
+      second est prêt bien avant que le premier ait fini d'être dit.
+
+   C'est la différence entre attendre douze secondes en silence et entendre
+   une voix au bout de quatre. */
+function couperEnDeux(texte, seuil = 110) {
+  const t = (texte || '').trim();
+  if (t.length <= seuil) return [t, ''];
+  const fins = [];
+  const r = /[.!?…]\s+/g;
+  let m;
+  while ((m = r.exec(t))) fins.push(m.index + m[0].length);
+  // La coupure la plus proche du seuil, sans jamais laisser un bout ridicule.
+  const bonne = fins.find((i) => i >= 40);
+  if (bonne && bonne < t.length - 10) return [t.slice(0, bonne).trim(), t.slice(bonne).trim()];
+  return [t, ''];
+}
+
+async function jouerMorceau(r) {
+  if (!r || !r.audio_base64) return false;
+  const son = $('son');
+  son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
+  await jouerEtAttendre(son);
+  return true;
+}
+
+async function direVite(texte, langue) {
+  if (!texte) return;
+  const [debut, reste] = couperEnDeux(texte);
+  // Les deux partent en même temps. Rien n'attend son tour pour être demandé.
+  const promesseReste = reste
+    ? appel('/api/voix', { texte: reste, langue, voix: 'femme' }).catch(() => null)
+    : null;
+  try {
+    const premier = await appel('/api/voix', { texte: debut, langue, voix: 'femme' });
+    if (!(await jouerMorceau(premier))) {
+      etat('La voix n’a rien renvoyé — le texte est à l’écran');
+    }
+  } catch (e) {
+    etat(`Sans la voix : ${e.message}`);
+  }
+  if (promesseReste) await jouerMorceau(await promesseReste);
 }
 
 /* Une voix qui échoue ne doit pas se taire en silence : le texte reste à
@@ -281,7 +376,27 @@ function jouerEtAttendre(son) {
 }
 
 /* ── Le micro ─────────────────────────────────────────────────────────── */
-const SILENCE_MS = 2000;
+/* Deux secondes de silence avant de conclure, c'était deux secondes perdues
+   sur CHAQUE question — plus que la réflexion de BIBA elle-même.
+
+   Mais on ne peut pas simplement couper court : quelqu'un qui cherche ses mots
+   se ferait interrompre, et Lamine me l'a déjà reproché à juste titre. Alors
+   le délai dépend de ce que le navigateur SAIT :
+
+   - il annonce lui-même que la voix s'est arrêtée (« speechend ») : il en est
+     sûr, on conclut en 600 ms ;
+   - il ne dit rien et on ne compte que les mots : on garde le filet large,
+     parce qu'un silence entre deux mots n'est pas une fin de phrase ;
+   - la personne n'a dit qu'un mot ou deux : on attend plus longtemps. « Euh…
+     Khalam… » n'est pas une question finie. */
+const SILENCE_MS = 600;
+const SILENCE_DEBUT_MS = 1400;   // tant qu'on n'a presque rien entendu
+const MOTS_POUR_ETRE_SUR = 3;
+/* Le chemin de secours, lui, écoute le SON et non les mots : un silence
+   mesuré au micro est une preuve, pas une supposition. On peut donc conclure
+   vite — un peu plus prudemment quand même, car ici rien ne se réaffiche à
+   l'écran pendant qu'on parle. */
+const SILENCE_SON_MS = 900;
 let enregistreur = null;
 let flux = null;
 
@@ -354,7 +469,7 @@ function surveiller(fluxAudio, arreter, rapport) {
       if (!aParle) { if (ecoule > SANS_UN_MOT_MS) fermer(); return; }
       if (Date.now() - debutParole <= PAROLE_MINIMALE) return;
       if (!debutSilence) debutSilence = Date.now();
-      else if (Date.now() - debutSilence > SILENCE_MS) fermer();
+      else if (Date.now() - debutSilence > SILENCE_SON_MS) fermer();
     }, 100);
   } catch { /* il reste l'horloge et le second appui */ }
 
@@ -431,6 +546,7 @@ function ecouterAvecLeTelephone() {
       relancer();
       return;
     }
+    bipCompris();                 // « c'est pris » — avant même de partir
     etat('BIBA réfléchit…', true);
     // « fr » : c'est le français que le téléphone vient de reconnaître.
     recuTexte(texte, 'fr').catch((e) => etat(e.message)).finally(relancer);
@@ -479,12 +595,20 @@ function ecouterAvecLeTelephone() {
 
   reco.onsoundstart = () => { clearTimeout(minuterie); };
   reco.onspeechstart = () => { voixEnCours = true; clearTimeout(minuterie); };
+  /* Combien de mots ont été entendus jusqu'ici : deux mots ne font pas une
+     question, et on ne coupe pas quelqu'un qui commence à peine. */
+  const attente = () => {
+    const dit = (acquis + provisoireCourant).trim();
+    const mots = dit ? dit.split(/\s+/).length : 0;
+    return mots >= MOTS_POUR_ETRE_SUR ? SILENCE_MS : SILENCE_DEBUT_MS;
+  };
+
   reco.onspeechend = () => {
     // Là, la voix s'est vraiment arrêtée : c'est le bon moment pour compter.
     voixEnCours = false;
-    relancerLaMinuterie(SILENCE_MS);
+    relancerLaMinuterie(attente());
   };
-  reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(SILENCE_MS); };
+  reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(attente()); };
 
   reco.onresult = (e) => {
     let provisoire = '';
@@ -678,34 +802,32 @@ async function demander(question) {
   etat('BIBA réfléchit…', true);
   const depart = Date.now();
   try {
-    /* On demande la voix DANS le même envoi : elle se fabrique pendant qu'on
-       attend déjà, au lieu d'un second aller-retour une fois la réponse
-       revenue. C'est une à deux secondes de moins sur un réseau mobile. */
-    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel, avec_voix: true });
+    /* Le texte D'ABORD, la voix ensuite.
+       Demander les deux dans le même envoi paraissait plus malin : la voix se
+       fabriquait pendant l'attente. Mais elle retardait la réponse entière —
+       rien ne s'affichait tant que le dernier octet d'audio n'était pas prêt.
+       Mesuré : 8,8 s avant le premier mot à l'écran, contre 2,5 s ici. */
+    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel, avec_voix: false });
     dernier = r;
     const enFrancais = r.langue_reponse === 'fr';
     $('reponse').textContent = r.reponse || r.reponse_wo || '(pas de réponse)';
     $('reponse-fr').textContent = enFrancais ? '' : (r.reponse_fr || '');
     $('mal').hidden = enFrancais;
 
-    // La voix est déjà là : on la joue sans rien redemander. Si elle manque,
-    // on reprend l'ancien chemin — mieux vaut une seconde de plus que le
-    // silence.
-    if (r.voix && r.voix.audio_base64) {
-      const son = $('son');
-      son.src = `data:${r.voix.type_mime || 'audio/mp4'};base64,${r.voix.audio_base64}`;
-      await jouerEtAttendre(son);
-    } else {
-      await direAVoixHaute(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
-    }
+    // Le texte est lu, la personne n'attend plus devant un écran vide.
+    // Maintenant seulement, la voix — et en deux morceaux, pour qu'elle
+    // commence avant d'être entièrement fabriquée.
+    const tTexte = Date.now() - depart;
+    await direVite(r.reponse || r.reponse_wo, enFrancais ? 'fr' : 'wo');
     /* D'où vient le temps. Le total mesuré ici est celui que la personne
        ressent : il comprend l'aller-retour du réseau, que le serveur ne voit
        pas. La différence entre les deux, c'est le réseau. */
     const t = r.temps || {};
     const s = (ms) => (ms / 1000).toFixed(1);
     $('chrono').textContent = t.total_ms
-      ? `${s(Date.now() - depart)} s — réflexion ${s(t.reflexion_ms)} · `
-        + `voix ${s(t.voix_ms)} · réseau ${s(Math.max(0, (Date.now() - depart) - t.total_ms))}`
+      ? `texte en ${s(tTexte)} s — réflexion ${s(t.reflexion_ms)} · `
+        + `traduction ${s(t.traduction_ms)} · réseau ${s(Math.max(0, tTexte - t.total_ms))}`
+        + ` · voix ${s(Date.now() - depart - tTexte)}`
       : `${s(Date.now() - depart)} s`;
 
     etat('Appuie pour poser une autre question');
