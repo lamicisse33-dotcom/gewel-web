@@ -149,6 +149,7 @@ function finir() {
   nomActuel = ''; attendLeNom = false; questionEnAttente = ''; dernier = null;
   $('qui').hidden = true;
   $('mal').hidden = true; $('correction').hidden = true;
+  fermerConfirmation();
   $('entendu').textContent = '';
   $('reponse').textContent = 'Appuie sur le micro et parle.';
   $('reponse-fr').textContent = '';
@@ -828,13 +829,25 @@ async function recuTexte(texte, langueDetectee) {
     return;
   }
 
+  /* On vient de lui demander « c'est bien ça ? » : sa réponse n'est pas une
+     nouvelle question, c'est un oui ou un non. Tout le reste EST une nouvelle
+     question — quelqu'un qui reformule au lieu de répondre a raison, et on ne
+     va pas lui redemander de dire oui. */
+  if (confirmation) {
+    const c = confirmation;
+    if (OUI.test(texte)) { fermerConfirmation(); await demander(c.question_si_oui || c.question || '', { confirme: true }); relancer(); return; }
+    if (NON.test(texte)) { repondreNon(); return; }
+    fermerConfirmation();
+  }
+
   await demander(texte);
   relancer();
 }
 
-async function demander(question) {
+async function demander(question, { confirme = false } = {}) {
   $('mal').hidden = true;
   $('correction').hidden = true;     // une nouvelle question referme l'ancienne
+  fermerConfirmation();
   $('reponse-fr').hidden = false;
   $('chrono').textContent = '';
   etat('BIBA réfléchit…', true);
@@ -845,8 +858,23 @@ async function demander(question) {
        fabriquait pendant l'attente. Mais elle retardait la réponse entière —
        rien ne s'affichait tant que le dernier octet d'audio n'était pas prêt.
        Mesuré : 8,8 s avant le premier mot à l'écran, contre 2,5 s ici. */
-    const r = await appel('/api/assistant', { question, interlocuteur: nomActuel, avec_voix: false });
+    const r = await appel('/api/assistant', {
+      question, interlocuteur: nomActuel, avec_voix: false,
+      /* « confirme » veut dire : la personne vient de répondre oui. On ne
+         redemande jamais deux fois de suite — ce serait une boucle, et une
+         assistante qui doute d'un oui n'est plus prudente, elle est pénible. */
+      confirme,
+    });
     dernier = r;
+
+    /* BIBA N'A PAS COMPRIS, ET ELLE LE DIT.
+       C'est le seul endroit de l'application où elle ne répond pas. Le serveur
+       a mesuré son doute (voir server/lib/doute.js) ; ici on ne fait que le
+       montrer et l'écouter. */
+    if (r.etat === 'doute') {
+      await auDoute(r, Date.now() - depart);
+      return;
+    }
     const enFrancais = r.langue_reponse === 'fr';
     $('reponse').textContent = r.reponse || r.reponse_wo || '(pas de réponse)';
     $('reponse-fr').textContent = enFrancais ? '' : (r.reponse_fr || '');
@@ -883,6 +911,71 @@ async function demander(question) {
   }
 }
 
+/* ── QUAND BIBA N'EST PAS SÛRE ─────────────────────────────────────────
+   Deux cas, et ils n'appellent pas la même chose.
+
+   « Je n'ai rien compris » : il n'y a rien à proposer. BIBA le dit, à voix
+   haute, et rend la parole. Ouvrir une fenêtre pour montrer du vide serait
+   une politesse inutile.
+
+   « J'ai presque compris » : elle a un candidat — une question qu'elle connaît
+   par cœur. Elle le montre et demande. Et si la réponse est oui, la question
+   repart telle qu'elle est ÉCRITE dans la base, pas telle qu'on a cru
+   l'entendre : elle retombe alors sur le circuit court, mesuré à 92 ms. Le
+   doute rend donc la réponse plus rapide, pas plus lente. */
+let confirmation = null;
+
+const OUI = /^\s*(waaw|waw|wow|wao|waaws?|oui|ouais|yes|voil[àa]|exact|c[’']?est [çc]a|d[’']?accord)\b/i;
+const NON = /^\s*(d[ée]{1,2}d[ée]{1,2}t|dedet|d[ée]d[ée]|non|nan|no|pas du tout|pas [çc]a)\b/i;
+
+async function auDoute(r, tTexte) {
+  const langue = r.langue_reponse === 'fr' ? 'fr' : 'wo';
+  $('reponse').textContent = r.reponse || '';
+  $('reponse-fr').textContent = (langue === 'wo' && r.reponse_fr && r.reponse_fr !== r.reponse)
+    ? r.reponse_fr : '';
+  const s = (ms) => (ms / 1000).toFixed(1);
+  $('chrono').textContent = `${s(tTexte)} s — BIBA préfère redemander`;
+
+  if (r.raison === 'presque' && r.propose) {
+    $('confirmer-titre').textContent = r.reponse || 'C’est bien ça que tu as dit ?';
+    $('confirmer-entendu').textContent = `« ${r.question || ''} »`;
+    $('confirmer-propose').textContent = r.propose;
+    confirmation = r;
+    $('confirmer').hidden = false;
+    $('mal').hidden = true;
+    etat('Dis « waaw » ou appuie sur oui');
+  } else {
+    etat('Appuie et repose ta question');
+  }
+
+  // La voix APRÈS l'affichage : on ne fait attendre personne devant un écran
+  // vide, même pour dire qu'on n'a pas compris.
+  await direVite(r.reponse, langue, r.clef_voix);
+}
+
+function fermerConfirmation() {
+  confirmation = null;
+  const boite = $('confirmer');
+  if (boite) boite.hidden = true;
+}
+
+async function repondreOui() {
+  const c = confirmation;
+  fermerConfirmation();
+  if (!c) return;
+  suspendre();
+  await demander(c.question_si_oui || c.question || '', { confirme: true });
+  relancer();
+}
+
+function repondreNon() {
+  fermerConfirmation();
+  $('reponse').textContent = 'Repose ta question, je t’écoute.';
+  $('reponse-fr').textContent = '';
+  etat('Appuie et repose ta question');
+  relancer();
+}
+
 /* ── La correction : c'est elle qui fait grandir le lexique ─────────────
    La fenêtre s'ouvre TOUTE SEULE quand la réponse est en wolof. C'est le
    moment où quelqu'un qui parle wolof est devant l'écran ; lui demander
@@ -916,6 +1009,9 @@ function fermerCorrection() {
   // On laisse le bouton, pour pouvoir revenir sur la même réponse.
   $('mal').hidden = !(dernier && dernier.langue_reponse !== 'fr');
 }
+
+$('oui').onclick = repondreOui;
+$('non').onclick = repondreNon;
 
 $('mal').onclick = ouvrirCorrection;
 $('fermer-correction').onclick = () => { fermerCorrection(); etat('Appuie pour poser une autre question'); };
