@@ -383,6 +383,10 @@ const EXT = { 'audio/mp4':'m4a', 'audio/webm':'webm', 'audio/ogg':'ogg' };
    - il n'a rien entendu → on le dit, comme avant. */
 const RecoNavigateur = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recoEnCours = null;
+/* Un téléphone qui annonce savoir reconnaître le français mais ne rend jamais
+   rien : ça existe. Après un échec, on ne réessaie plus de la séance — on
+   reprend l'enregistrement, qui marche partout. */
+let telephoneEcouteMal = false;
 
 function ecouterAvecLeTelephone() {
   const reco = new RecoNavigateur();
@@ -394,7 +398,8 @@ function ecouterAvecLeTelephone() {
   reco.continuous = true;
   reco.interimResults = true;
 
-  let acquis = '';
+  let acquis = '';          // ce que le navigateur a arrêté définitivement
+  let provisoireCourant = ''; // ce qu'il est en train de reconnaître
   let minuterie = null;
   let fini = false;
 
@@ -405,8 +410,24 @@ function ecouterAvecLeTelephone() {
     try { reco.stop(); } catch { /* déjà arrêté */ }
     micActif(false);
     recoEnCours = null;
-    const texte = acquis.trim();
-    if (!texte) { etat('Rien entendu. Appuie et parle.'); relancer(); return; }
+
+    /* ON GARDE CE QUI EST À L'ÉCRAN. Le navigateur distingue ce qu'il a
+       définitivement arrêté et ce qu'il est encore en train de reconnaître.
+       Je ne prenais que le premier — et comme on conclut dès que la voix
+       s'arrête, le définitif n'était souvent pas encore arrivé : on jetait
+       les mots qu'on venait d'afficher, et BIBA disait n'avoir rien entendu.
+       Le texte envoyé est maintenant EXACTEMENT celui qu'on a lu à l'écran. */
+    const texte = (acquis + provisoireCourant).trim();
+
+    if (!texte) {
+      /* Rien du tout : ce téléphone dit savoir reconnaître le français mais ne
+         rend rien. On ne s'entête pas — la prochaine fois, l'enregistrement.
+         On n'ouvre pas le micro tout seul pour autant : c'est la règle. */
+      telephoneEcouteMal = true;
+      etat('Je n’ai pas saisi. Appuie et reparle, j’écoute autrement.');
+      relancer();
+      return;
+    }
     etat('BIBA réfléchit…', true);
     // « fr » : c'est le français que le téléphone vient de reconnaître.
     recuTexte(texte, 'fr').catch((e) => etat(e.message)).finally(relancer);
@@ -471,6 +492,7 @@ function ecouterAvecLeTelephone() {
     }
     // Les mots s'affichent pendant qu'on parle : c'est ce qui fait qu'on
     // attend sans s'impatienter.
+    provisoireCourant = provisoire;
     const enCours = (acquis + provisoire).trim();
     if (enCours) $('entendu').textContent = `« ${enCours} »`;
     relancerLaMinuterie();      // filet large : un mot ne prouve pas la fin
@@ -508,7 +530,9 @@ $('micro').onclick = async () => {
      l'enregistrement : aucun navigateur ne le reconnaît. Tant qu'on ne sait
      pas encore à qui on parle, on essaie le téléphone — le français est le
      défaut, et s'il se trompe on l'entendra dans ce qui s'affiche. */
-  if (RecoNavigateur && langueConversation !== 'wo') return ecouterAvecLeTelephone();
+  if (RecoNavigateur && !telephoneEcouteMal && langueConversation !== 'wo') {
+    return ecouterAvecLeTelephone();
+  }
   return ecouter();
 };
 
