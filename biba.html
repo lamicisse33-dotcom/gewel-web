@@ -142,11 +142,34 @@ let dernier = null;
 let minuteurFin = null;
 const motsDe = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
 
-function relancer() { clearTimeout(minuteurFin); minuteurFin = setTimeout(finir, FIN_CONVERSATION_MS); }
+/* CORRIGER N'EST PAS ÊTRE INACTIF.
+   Une conversation se termine 30 secondes après le dernier contact avec le
+   micro : le prénom est oublié, l'écran se vide. C'est une bonne règle — sur
+   un téléphone partagé, BIBA ne doit pas accueillir le suivant par le nom du
+   précédent.
+
+   Mais corriger du wolof, c'est lire le français, le copier, aller le
+   retravailler ailleurs, revenir coller. Pendant tout ce temps on ne touche
+   pas au micro, et le compte à rebours croyait la personne partie : il
+   fermait la fenêtre au moment précis où elle servait. Signalé par Lamine le
+   6 septembre 2026, reproduit avant d'être corrigé.
+
+   Tant que la fenêtre est ouverte, la conversation attend donc dix minutes au
+   lieu de trente secondes. Elle finit quand même — sinon un prénom resterait
+   pour toujours sur un téléphone posé — mais avec un délai fait pour
+   quelqu'un qui écrit, pas pour quelqu'un qui est parti. */
+const FIN_PENDANT_CORRECTION_MS = 600000;
+let enCorrection = false;
+
+function relancer() {
+  clearTimeout(minuteurFin);
+  minuteurFin = setTimeout(finir, enCorrection ? FIN_PENDANT_CORRECTION_MS : FIN_CONVERSATION_MS);
+}
 function suspendre() { clearTimeout(minuteurFin); }
 function finir() {
   suspendre();
   nomActuel = ''; attendLeNom = false; questionEnAttente = ''; dernier = null;
+  enCorrection = false;
   $('qui').hidden = true;
   $('mal').hidden = true; $('correction').hidden = true;
   fermerConfirmation();
@@ -1069,6 +1092,8 @@ function ouvrirCorrection() {
   $('source-wo').textContent = dernier.reponse_wo || dernier.reponse || '';
   $('juste').value = dernier.reponse_wo || '';
 
+  enCorrection = true;
+  relancer();                          // dix minutes : le temps d'aller chercher la bonne tournure
   $('correction').hidden = false;
   $('mal').hidden = true;              // elle est ouverte : le bouton ne sert plus
   // Le français est déjà dans la fenêtre : l'afficher deux fois n'apprend rien.
@@ -1076,6 +1101,8 @@ function ouvrirCorrection() {
 }
 
 function fermerCorrection() {
+  enCorrection = false;
+  relancer();                          // on rend la conversation à son délai normal
   $('correction').hidden = true;
   $('reponse-fr').hidden = false;
   // On laisse le bouton, pour pouvoir revenir sur la même réponse.
@@ -1123,6 +1150,8 @@ $('envoyer').onclick = async () => {
     });
     $('reponse').textContent = corrigee;
     dernier.reponse_wo = corrigee;
+    enCorrection = false;
+    relancer();
     $('correction').hidden = true;
     $('reponse-fr').hidden = false;
     $('mal').hidden = true;
@@ -1217,6 +1246,10 @@ $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('entrer'
 
 // Un code déjà accepté sur ce téléphone : on entre sans rien redemander.
 if (code) ouvrir();
+
+/* Taper dans le champ repousse la fin : quelqu'un qui écrit n'est pas parti.
+   Sans ça, dix minutes suffiraient à peine pour une longue phrase. */
+$('juste').addEventListener('input', relancer);
 </script>
 </body>
 </html>
