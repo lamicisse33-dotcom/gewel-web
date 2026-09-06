@@ -371,27 +371,39 @@ function jouerEtAttendre(son) {
 }
 
 /* ── Le micro ─────────────────────────────────────────────────────────── */
-/* Deux secondes de silence avant de conclure, c'était deux secondes perdues
-   sur CHAQUE question — plus que la réflexion de BIBA elle-même.
+/* ── LA RÈGLE DU MICRO, ET IL N'Y EN A QU'UNE ──────────────────────────
+   Dictée par Lamine le 6 septembre 2026, et elle remplace tout ce qu'il y
+   avait avant :
 
-   Mais on ne peut pas simplement couper court : quelqu'un qui cherche ses mots
-   se ferait interrompre, et Lamine me l'a déjà reproché à juste titre. Alors
-   le délai dépend de ce que le navigateur SAIT :
+     « Une fois que le micro est activé, il doit rester éveillé jusqu'à
+       entendre une voix. Et si cette voix arrête de parler pendant deux
+       secondes, le micro doit cesser d'écouter. »
 
-   - il annonce lui-même que la voix s'est arrêtée (« speechend ») : il en est
-     sûr, on conclut en 600 ms ;
-   - il ne dit rien et on ne compte que les mots : on garde le filet large,
-     parce qu'un silence entre deux mots n'est pas une fin de phrase ;
-   - la personne n'a dit qu'un mot ou deux : on attend plus longtemps. « Euh…
-     Khalam… » n'est pas une question finie. */
-const SILENCE_MS = 600;
-const SILENCE_DEBUT_MS = 1400;   // tant qu'on n'a presque rien entendu
-const MOTS_POUR_ETRE_SUR = 3;
-/* Le chemin de secours, lui, écoute le SON et non les mots : un silence
-   mesuré au micro est une preuve, pas une supposition. On peut donc conclure
-   vite — un peu plus prudemment quand même, car ici rien ne se réaffiche à
-   l'écran pendant qu'on parle. */
-const SILENCE_SON_MS = 900;
+   Deux phrases, deux comportements, et rien d'autre :
+
+   1. TANT QUE PERSONNE N'A PARLÉ, LE MICRO N'A AUCUN DÉLAI. Il attend. Il ne
+      se referme pas parce qu'on a mis du temps à commencer. C'est ce qui
+      rendait BIBA sourde : je fermais au bout de deux secondes « si on
+      n'avait rien entendu », et sur iPhone « rien entendu » et « pas encore
+      compris » se ressemblent exactement.
+
+   2. DÈS QU'UNE VOIX A ÉTÉ ENTENDUE, deux secondes de silence referment le
+      micro. Un seul délai, le même partout — plus de 600 ms quand le
+      navigateur est bavard, plus de cinq secondes quand il se tait, plus de
+      compte de mots. Un réglage qu'on ne peut pas expliquer en une phrase est
+      un réglage qu'on ne peut pas régler.
+
+   Ce que ça coûte, et je le dis parce que ça se verra : sur iPhone, Safari
+   n'annonce jamais qu'une voix s'est arrêtée. Le seul silence qu'on sache y
+   mesurer est celui qui suit le dernier MOT reconnu. Quelqu'un qui cherche
+   ses mots plus de deux secondes au milieu d'une phrase sera donc conclu.
+   Le chemin de l'enregistrement — celui du wolof — n'a pas ce défaut : il
+   écoute le SON, pas les mots, et deux secondes de vrai silence y sont une
+   preuve.
+
+   Le second appui sur le micro conclut immédiatement, comme avant. */
+const SILENCE_APRES_VOIX_MS = 2000;
+
 let enregistreur = null;
 let flux = null;
 
@@ -406,8 +418,11 @@ function micActif(actif) {
    jamais démarrer : le silence, le « on n'a rien dit », et une horloge qui ne
    dépend d'aucun son. Sans le dernier, le micro resterait ouvert sans fin. */
 function surveiller(fluxAudio, arreter, rapport) {
-  const SANS_UN_MOT_MS = 2000;   // appuyé, et pas un son : on referme
-  const DUREE_MAX = 30000;
+  /* Plus de « appuyé et pas un son : on referme ». Le micro attend.
+     Il ne reste qu'un plafond absolu, et il ne sert qu'à ne pas enregistrer
+     sans fin un téléphone posé sur une table : deux minutes de silence
+     complet, et l'enregistrement vide est jeté ici, sans rien envoyer. */
+  const DUREE_MAX = 120000;
   const bouton = $('micro');
   let termine = false, horloge = null, boucle = null, ctx = null;
 
@@ -461,10 +476,10 @@ function surveiller(fluxAudio, arreter, rapport) {
         aParle = true; debutSilence = 0; rapport.parole += ecartTour;
         return;
       }
-      if (!aParle) { if (ecoule > SANS_UN_MOT_MS) fermer(); return; }
+      if (!aParle) return;            // personne n'a encore parlé : on attend
       if (Date.now() - debutParole <= PAROLE_MINIMALE) return;
       if (!debutSilence) debutSilence = Date.now();
-      else if (Date.now() - debutSilence > SILENCE_SON_MS) fermer();
+      else if (Date.now() - debutSilence > SILENCE_APRES_VOIX_MS) fermer();
     }, 100);
   } catch { /* il reste l'horloge et le second appui */ }
 
@@ -543,32 +558,26 @@ function ecouterAvecLeTelephone() {
     }
     bipCompris();                 // « c'est pris » — avant même de partir
     etat('BIBA réfléchit…', true);
-    // « fr » : c'est le français que le téléphone vient de reconnaître.
-    recuTexte(texte, 'fr').catch((e) => etat(e.message)).finally(relancer);
+    /* PAS « fr ». Le téléphone ne sait reconnaître QUE le français : il écrit
+       donc du français quoi qu'on lui dise, y compris à quelqu'un qui parle
+       wolof — « thi », « gnou », « wakh ». Prendre sa transcription pour une
+       preuve de langue enfermait toute la conversation en français dès le
+       premier mot, exactement le contraire de ce que Lamine demande.
+       On ne dit rien : c'est le serveur, qui a le lexique et la table des
+       364 correspondances, qui tranchera. */
+    recuTexte(texte, '').catch((e) => etat(e.message)).finally(relancer);
   };
   reco.conclureMaintenant = conclure;
 
-  /* Deux délais, et c'est voulu. Le court sert quand le navigateur nous dit
-     que la voix s'est arrêtée : on peut conclure vite, il sait. Le long est
-     le filet pour les navigateurs qui ne disent rien — mieux vaut attendre
-     une seconde de trop que couper quelqu'un au milieu d'un mot. */
-  const FILET_MS = 5000;
-  /* On a appuyé et il ne se passe rien : ni son, ni mot, ni voix. Inutile de
-     laisser le micro ouvert cinq secondes — c'est cinq secondes où l'on croit
-     que ça a planté. Deux secondes suffisent pour savoir que personne ne parle.
+  /* Un seul drapeau, et c'est le pivot de toute la règle : a-t-on entendu
+     une voix, oui ou non ? Tant que c'est non, aucune minuterie ne tourne. */
+  let voixEntendue = false;
 
-     Ce délai-là ne s'applique QU'AVANT le premier son. Dès qu'on a entendu
-     quelque chose, on repasse au filet large : couper quelqu'un qui parle
-     coûte bien plus cher que d'attendre. */
-  const RIEN_ENTENDU_MS = 2000;
-  let quelqueChoseEntendu = false;
-  /* Ce navigateur nous annonce-t-il le son ? Chrome oui, Safari souvent non.
-     Tant qu'il ne nous a rien dit, son silence ne prouve rien. */
-  let navigateurBavard = false;
-
-  const relancerLaMinuterie = (delai = FILET_MS) => {
+  const relancerLaMinuterie = () => {
     clearTimeout(minuterie);
-    minuterie = setTimeout(() => { if (!voixEnCours) conclure(); }, delai);
+    // Personne n'a parlé : rien à compter. Le micro attend, c'est la règle.
+    if (!voixEntendue) return;
+    minuterie = setTimeout(() => { if (!voixEnCours) conclure(); }, SILENCE_APRES_VOIX_MS);
   };
 
   const versLEnregistrement = () => {
@@ -601,25 +610,20 @@ function ecouterAvecLeTelephone() {
      n'annoncent pas ces événements du tout. */
   let voixEnCours = false;
 
-  reco.onsoundstart = () => { navigateurBavard = true; quelqueChoseEntendu = true; clearTimeout(minuterie); };
-  reco.onspeechstart = () => { navigateurBavard = true; quelqueChoseEntendu = true; voixEnCours = true; clearTimeout(minuterie); };
-  /* Combien de mots ont été entendus jusqu'ici : deux mots ne font pas une
-     question, et on ne coupe pas quelqu'un qui commence à peine. */
-  const attente = () => {
-    const dit = (acquis + provisoireCourant).trim();
-    const mots = dit ? dit.split(/\s+/).length : 0;
-    return mots >= MOTS_POUR_ETRE_SUR ? SILENCE_MS : SILENCE_DEBUT_MS;
-  };
-
+  reco.onsoundstart = () => { voixEntendue = true; clearTimeout(minuterie); };
+  reco.onspeechstart = () => { voixEntendue = true; voixEnCours = true; clearTimeout(minuterie); };
   reco.onspeechend = () => {
     // Là, la voix s'est vraiment arrêtée : c'est le bon moment pour compter.
     voixEnCours = false;
-    relancerLaMinuterie(attente());
+    relancerLaMinuterie();
   };
-  reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(attente()); };
+  reco.onsoundend = () => { if (!voixEnCours) relancerLaMinuterie(); };
 
   reco.onresult = (e) => {
-    quelqueChoseEntendu = true;
+    /* Sur iPhone, Safari n'annonce ni « soundstart » ni « speechstart » : un
+       mot qui arrive est alors la SEULE preuve qu'une voix existe. C'est ici
+       que la minuterie des deux secondes se met à tourner, pas avant. */
+    voixEntendue = true;
     let provisoire = '';
     for (let i = e.resultIndex; i < e.results.length; i += 1) {
       const morceau = e.results[i][0].transcript;
@@ -631,7 +635,7 @@ function ecouterAvecLeTelephone() {
     provisoireCourant = provisoire;
     const enCours = (acquis + provisoire).trim();
     if (enCours) $('entendu').textContent = `« ${enCours} »`;
-    relancerLaMinuterie();      // filet large : un mot ne prouve pas la fin
+    relancerLaMinuterie();      // deux secondes après le dernier mot entendu
   };
 
   reco.onerror = (e) => {
@@ -650,34 +654,16 @@ function ecouterAvecLeTelephone() {
 
   try {
     reco.start();
-    /* CE QUI A RENDU BIBA SOURDE, LE 6 SEPTEMBRE AU SOIR.
-       Je fermais le micro au bout de deux secondes « si on n'avait rien
-       entendu ». Mais sur iPhone, Safari n'annonce ni « soundstart » ni
-       « speechstart », et il peut mettre plus de deux secondes à rendre le
-       premier mot. « Rien entendu » et « je n'ai pas encore compris » se
-       ressemblaient donc exactement — et on coupait la parole à quelqu'un qui
-       parlait, pour lui dire ensuite qu'on n'avait rien entendu.
+    /* Et c'est tout. Aucune minuterie ne démarre ici — c'est exactement ce
+       qui a rendu BIBA sourde le 6 septembre au soir : je fermais le micro au
+       bout de deux secondes « si on n'avait rien entendu », et sur iPhone
+       « rien entendu » et « pas encore compris » sont indiscernables. On
+       coupait donc la parole à quelqu'un qui parlait, pour lui dire ensuite
+       qu'on n'avait rien entendu.
 
-       La règle est maintenant : on ne conclut sur le silence que si le
-       navigateur nous a DIT quelque chose. S'il ne dit rien, on ne sait pas —
-       alors on prolonge une fois jusqu'au filet large, et on conclut seulement
-       ensuite. Un appui sans un mot ferme donc en 2 s là où le navigateur
-       parle, et en 7 s là où il se tait. Un doute ne coupe jamais la parole. */
+       Le micro attend. Il ne se referme que sur une voix qui s'arrête, ou
+       sur un second appui. */
     clearTimeout(minuterie);
-    let prolonge = false;
-    const auSilence = () => {
-      if (quelqueChoseEntendu || acquis || provisoireCourant) {
-        relancerLaMinuterie();          // on a entendu : filet large
-        return;
-      }
-      if (!prolonge && !navigateurBavard) {
-        prolonge = true;                // il ne nous dit rien : on ne devine pas
-        minuterie = setTimeout(auSilence, FILET_MS);
-        return;
-      }
-      conclure();
-    };
-    minuterie = setTimeout(auSilence, RIEN_ENTENDU_MS);
   } catch {
     versLEnregistrement();
   }
@@ -795,7 +781,9 @@ async function recuTexte(texte, langueDetectee) {
      en français. Répondre en français à quelqu'un qui parle wolof n'a aucun
      intérêt — il a déjà dix assistantes françaises. L'inverse est une gêne,
      pas un échec. */
-  if (!langueConversation) langueConversation = langueDetectee === 'fr' ? 'fr' : 'wo';
+  if (!langueConversation && langueDetectee) {
+    langueConversation = langueDetectee === 'fr' ? 'fr' : 'wo';
+  }
 
   if (attendLeNom) {
     const entendu = extraireNom(texte);
@@ -860,12 +848,22 @@ async function demander(question, { confirme = false } = {}) {
        Mesuré : 8,8 s avant le premier mot à l'écran, contre 2,5 s ici. */
     const r = await appel('/api/assistant', {
       question, interlocuteur: nomActuel, avec_voix: false,
+      /* LA LANGUE DE LA CONVERSATION L'EMPORTE SUR CELLE DE LA PHRASE.
+         Demande de Lamine, 6 septembre : « si on parle à BIBA en wolof, elle
+         doit répondre en wolof et ne plus parler français jusqu'à la fin ».
+         Sans ça, le détecteur retranchait phrase par phrase — et une question
+         wolof courte, qui lui paraît française, faisait basculer BIBA en
+         français au milieu d'une conversation wolof. */
+      langue_conversation: langueConversation || '',
       /* « confirme » veut dire : la personne vient de répondre oui. On ne
          redemande jamais deux fois de suite — ce serait une boucle, et une
          assistante qui doute d'un oui n'est plus prudente, elle est pénible. */
       confirme,
     });
     dernier = r;
+    /* La première réponse fixe la langue pour de bon. C'est le serveur qui
+       tranche, pas le téléphone : lui ne sait entendre que du français. */
+    if (!langueConversation) langueConversation = r.langue_reponse === 'fr' ? 'fr' : 'wo';
 
     /* BIBA N'A PAS COMPRIS, ET ELLE LE DIT.
        C'est le seul endroit de l'application où elle ne répond pas. Le serveur
