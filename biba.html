@@ -61,6 +61,41 @@
 const SERVEUR = 'https://interprete-wolof.onrender.com';
 const $ = (id) => document.getElementById(id);
 
+/* ── COPIER À LA MAIN N'EMPORTE QUE DU TEXTE ──────────────────────────────
+ *
+ * Lamine, 7 septembre 2026, deuxième capture : la pièce jointe qui arrivait
+ * dans ChatGPT s'appelle « archive web ». Ça nomme le coupable — c'est le
+ * format `webarchive` que SAFARI met dans le presse-papiers quand on
+ * sélectionne à la main. Une page entière, avec sa mise en forme, ses liens
+ * et ses images, là où il ne voulait qu'une phrase.
+ *
+ * Le bouton « Copier » ne peut pas produire ça : il n'écrit que du texte.
+ * Mais Lamine sélectionne au doigt, comme tout le monde, et ce chemin-là
+ * échappait au bouton. Corriger le bouton sans corriger la sélection, c'était
+ * corriger le cas qu'il n'utilise pas.
+ *
+ * Alors on prend la main sur la copie elle-même : on remet le texte
+ * sélectionné, en texte pur, et on empêche le navigateur d'ajouter ses
+ * propres versions. MESURÉ dans un vrai navigateur :
+ *     sans cette garde → text/plain ET text/html
+ *     avec            → text/plain, seul, et le texte est identique.
+ *
+ * Rien n'est perdu au passage : c'est exactement ce que la personne a
+ * sélectionné, ni plus ni moins. Ce qui disparaît, ce sont les copies que le
+ * navigateur fabriquait à côté, sans que personne les ait demandées.
+ */
+document.addEventListener('copy', (e) => {
+  const choix = (window.getSelection() || '').toString();
+  /* Rien de sélectionné, ou une copie déclenchée depuis un champ de saisie :
+     on ne s'en mêle pas, le navigateur fait déjà ce qu'il faut. */
+  if (!choix.trim() || !e.clipboardData) return;
+  try {
+    e.clipboardData.setData('text/plain', choix);
+    e.preventDefault();
+  } catch { /* refusé : le navigateur copie comme avant, on n'a rien cassé */ }
+});
+
+
 let code = '';
 try { code = localStorage.getItem('biba.code') || ''; } catch {}
 
