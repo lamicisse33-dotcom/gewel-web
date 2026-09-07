@@ -52,7 +52,158 @@
            padding:14px; font:inherit; font-weight:700; margin-top:10px; cursor:pointer; }
   .erreur { color:#ff9d9d; }
 
-  /* Cette page est servie depuis une adresse de KHALAM ; le serveur est
+  /* La fenêtre de correction. Elle s'ouvre d'elle-même quand la réponse est
+     en wolof : c'est le moment où quelqu'un qui parle wolof est devant
+     l'écran, et c'est le seul moment où la correction est facile. */
+  .boite .paire { display:flex; flex-direction:column; gap:4px; margin-bottom:12px; }
+  .boite .etiquette { font-size:11px; letter-spacing:1.2px; text-transform:uppercase;
+                      opacity:.45; display:flex; align-items:center; gap:8px; }
+  .boite .source { font-size:15px; line-height:1.5; background:rgba(255,255,255,.05);
+                   border-left:2px solid var(--or); border-radius:8px; padding:10px 12px; }
+  .boite .source.wo { border-left-color:rgba(255,247,220,.25); opacity:.7; font-size:14px; }
+  .boite .vide { opacity:.4; font-style:italic; }
+  .mini { background:transparent; border:1px solid rgba(255,247,220,.25); color:var(--creme);
+          border-radius:99px; padding:3px 10px; font:inherit; font-size:11px; cursor:pointer;
+          letter-spacing:0; text-transform:none; }
+  .boite .bas { display:flex; gap:10px; align-items:center; }
+  .boite .bas .plein { flex:1; }
+  .boite .bas .plat { margin-top:10px; white-space:nowrap; }
+
+  #verrou { position:fixed; inset:0; z-index:20; background:var(--nuit); display:flex;
+            align-items:center; justify-content:center; padding:24px; }
+  #verrou .dedans { max-width:400px; width:100%; text-align:center; }
+
+  /* ── UNE SÉLECTION À LA MAIN N'EMPORTE QUE DU TEXTE ──────────────────────
+     Lamine, 7 septembre 2026 : « quand je copie un texte pour le coller dans
+     ChatGPT, ça amène un fichier ». Collé dans Claude : du texte normal.
+
+     MESURÉ, dans un vrai navigateur, plutôt que supposé :
+       sélection à la main → text/plain ET text/html (avec toute la mise en
+                             forme de la page dedans) ;
+       bouton « Copier »   → text/plain, et rien d'autre.
+     Claude prend le texte ; l'autre application prend le HTML et en fait une
+     pièce jointe. Le vrai remède est donc le bouton — voir « Copier ».
+
+     Cette règle-ci n'a RIEN changé à la mesure sur ordinateur : l'icône
+     n'entrait déjà pas dans la copie. Elle est gardée pour l'iPhone, où une
+     sélection passée sur une image l'emporte vraiment, et parce qu'une icône
+     n'a de toute façon rien à faire dans une sélection. Ce n'est pas elle qui
+     corrige le défaut, et il ne faut pas croire le contraire. */
+  button, svg { -webkit-user-select: none; user-select: none; }
+
+</style>
+</head>
+<body>
+
+<div id="verrou">
+  <div class="dedans">
+    <div class="marque">K H A L A M</div>
+    <h1>BIBA</h1>
+    <p class="role" style="margin-bottom:22px">Tape le code que KHALAM t'a envoyé.</p>
+    <input id="code" type="text" autocomplete="off" autocapitalize="characters"
+           placeholder="AWA-N8YT-K89YZ" style="text-align:center; letter-spacing:1px">
+    <button class="plein" id="entrer">Entrer</button>
+    <p id="verrou-erreur" class="erreur" style="font-size:14px" hidden></p>
+  </div>
+</div>
+
+<main hidden id="appli">
+  <header>
+    <div class="marque">K H A L A M</div>
+    <h1>BIBA</h1>
+    <p class="role">Assistante virtuelle</p>
+  </header>
+
+  <div class="scene">
+    <div class="qui" id="qui" hidden></div>
+    <div class="dit" id="entendu"></div>
+    <div>
+      <div class="reponse" id="reponse">Appuie sur le micro et parle.</div>
+      <div class="reponse-fr" id="reponse-fr"></div>
+    <!-- Le chronomètre. Discret, mais il met fin aux impressions : on ne
+         discute plus de « c'est lent », on lit où part le temps. -->
+    <div id="chrono" style="font-size:11px;opacity:.35;margin-top:10px;letter-spacing:.4px"></div>
+    </div>
+    <button class="plat" id="mal" hidden>Corriger le wolof</button>
+
+    <!-- BIBA REDEMANDE PLUTÔT QUE DE DEVINER.
+         Son oreille se trompe sur deux mots wolof sur cinq, et rien de mieux
+         n'existe (Scribe v1 : 40,7 % d'erreur ; Whisper : 97,4 %). Alors quand
+         elle n'est pas sûre, elle le dit et propose ce qu'elle croit avoir
+         compris, au lieu de répondre à côté avec assurance. -->
+    <div class="boite" id="confirmer" hidden>
+      <h2 id="confirmer-titre">C’est bien ça que tu as dit ?</h2>
+
+      <div class="paire">
+        <div class="etiquette"><span>Ce que j’ai entendu</span></div>
+        <div class="source" id="confirmer-entendu"></div>
+      </div>
+
+      <div class="paire">
+        <div class="etiquette"><span>Est-ce cette question ?</span></div>
+        <div class="source" id="confirmer-propose"></div>
+      </div>
+
+      <div class="bas">
+        <button class="plein" id="oui">Waaw — oui</button>
+        <button class="plat" id="non" type="button">Déedéet — non</button>
+      </div>
+    </div>
+
+    <div class="boite" id="correction" hidden>
+      <h2>Comment fallait-il le dire ?</h2>
+
+      <div class="paire">
+        <div class="etiquette">
+          <span>Ce que BIBA voulait dire, en français</span>
+          <button class="mini" id="copier-fr" type="button">Copier</button>
+        </div>
+        <div class="source" id="source-fr"></div>
+      </div>
+
+      <div class="paire">
+        <div class="etiquette"><span>Ce qu’elle a dit en wolof</span></div>
+        <div class="source wo" id="source-wo"></div>
+      </div>
+
+      <div class="paire">
+        <div class="etiquette"><span>Le bon wolof</span></div>
+        <textarea id="juste" rows="3"
+                  placeholder="Écris ici la façon juste de le dire…"></textarea>
+      </div>
+
+      <div class="bas">
+        <button class="plein" id="envoyer">Enregistrer</button>
+        <button class="plat" id="fermer-correction" type="button">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="commande">
+    <button class="micro" id="micro" aria-label="Parler à BIBA">
+      <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11z"/></svg>
+    </button>
+    <div class="etat">
+      <span class="balance" id="pense" hidden aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 8v17"/><path d="M10 25.5h12"/>
+          <g class="fleau">
+            <path d="M5 11h22"/>
+            <path d="M5 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
+            <path d="M27 11l-3.2 5.2h6.4z" fill="currentColor" stroke-width="1.6"/>
+          </g>
+        </svg>
+      </span>
+      <span id="etat">Appuie pour parler</span>
+    </div>
+  </div>
+</main>
+
+<audio id="son" playsinline></audio>
+
+<script>
+/* Cette page est servie depuis une adresse de KHALAM ; le serveur est
    ailleurs, l'adresse d'appel doit donc être entière. Le serveur autorise
    expressément cette origine — sans quoi le navigateur bloquerait l'appel
    avant même qu'il parte. NE PAS recopier ce fichier à la main : passer par
