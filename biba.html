@@ -494,8 +494,8 @@ async function jouerMorceau(r) {
   if (!r || !r.audio_base64) return false;
   const son = $('son');
   son.src = `data:${r.type_mime || 'audio/mp4'};base64,${r.audio_base64}`;
-  await jouerEtAttendre(son);
-  return true;
+  /* On rend ce qui s'est vraiment passe, pas le fait d'avoir essaye. */
+  return await jouerEtAttendre(son);
 }
 
 async function direVite(texte, langue, clefPrete) {
@@ -518,7 +518,13 @@ async function direVite(texte, langue, clefPrete) {
     : null;
   try {
     const premier = await appel('/api/voix', { texte: debut, langue, voix: 'femme' });
-    if (!(await jouerMorceau(premier))) direAvecLeTelephone(texte, langue);
+    if (!(await jouerMorceau(premier))) {
+      /* Le debut n'a pas ete entendu : le telephone reprend la phrase ENTIERE.
+         Et on s'arrete la — jouer le reste par-dessus ferait deux voix en
+         meme temps, ce qui est pire que le silence. */
+      direAvecLeTelephone(texte, langue);
+      return;
+    }
   } catch (e) {
     /* Le service a refusé — crédit épuisé, surcharge, réseau. Il le dit en
        français : on garde SA phrase, elle est plus utile que la mienne. */
@@ -613,17 +619,31 @@ function auBonDebit(son) {
   return son;
 }
 
+/* Cette fonction disait « fini ». Elle ne disait pas « entendu ».
+ *
+ * Lamine, le 7 septembre 2026 : « elle ne lit pas les premieres phrases de son
+ * texte ». Voici pourquoi. Le son est demande en deux morceaux : la premiere
+ * phrase, puis le reste. Si la lecture du PREMIER echouait — un refus de
+ * lecture automatique sur iPhone, un audio illisible — cette promesse se
+ * terminait quand meme, sans rien dire, et l'appelant enchainait sur le
+ * second morceau. BIBA commencait donc au milieu de sa reponse.
+ *
+ * Elle rend desormais vrai seulement si le son est alle jusqu'au bout. */
 function jouerEtAttendre(son) {
   return new Promise((fini) => {
     let rendu = false;
-    const rendre = () => {
+    const rendre = (entendu) => {
       if (rendu) return;
-      rendu = true; enTrainDeParler = false; finDeParole = null; fini();
+      rendu = true; enTrainDeParler = false; finDeParole = null; fini(Boolean(entendu));
     };
-    enTrainDeParler = true; finDeParole = rendre;
-    son.onended = rendre; son.onerror = rendre;
-    setTimeout(rendre, 45000);
-    auBonDebit(son).play().catch(rendre);
+    enTrainDeParler = true;
+    /* Une interruption volontaire (on touche le micro pendant qu'elle parle)
+       compte comme entendu : ce n'est pas une panne, c'est un choix. */
+    finDeParole = () => rendre(true);
+    son.onended = () => rendre(true);
+    son.onerror = () => rendre(false);
+    setTimeout(() => rendre(true), 45000);
+    auBonDebit(son).play().catch(() => rendre(false));
   });
 }
 
