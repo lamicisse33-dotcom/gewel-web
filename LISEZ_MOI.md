@@ -24,7 +24,7 @@ fois qu'il répond vraiment.
 - Si l'adresse du serveur change un jour, une seule ligne à modifier dans
   `index.html` :
 
-      const SERVEUR = 'https://gewel-backend.onrender.com';
+      const SERVEUR = 'https://gewel-app.khalam.app';
 
 ## Réglage DNS (fait une fois, chez Namecheap)
 
