@@ -121,10 +121,10 @@
   <div class="dedans">
     <div class="marque">K H A L A M</div>
     <h1>BIBA</h1>
-    <p class="role" style="margin-bottom:22px">Tape le code que KHALAM t'a envoyé.</p>
+    <p class="role" style="margin-bottom:22px" id="verrou-mot">Tape le code que KHALAM t'a envoyé.</p>
     <input id="code" type="text" autocomplete="off" autocapitalize="characters"
            placeholder="AWA-N8YT-K89YZ" style="text-align:center; letter-spacing:1px">
-    <button class="plein" id="entrer">Entrer</button>
+    <button class="plein" id="entrer">Valider le code</button>
     <p id="verrou-erreur" class="erreur" style="font-size:14px" hidden></p>
   </div>
 </div>
@@ -272,6 +272,36 @@ document.addEventListener('copy', (e) => {
 let code = '';
 try { code = localStorage.getItem('biba.code') || ''; } catch {}
 
+/* ── QUAND LE CODE MEURT EN COURS DE ROUTE ─────────────────────────────────
+
+   Le 10 septembre 2026, BIBA affichait « Ce code a expiré. Demande un nouveau
+   code à KHALAM. » — et rien d'autre. Pas de champ, pas de bouton : le code
+   gardé sur le téléphone ouvrait l'application directement, et l'écran du
+   verrou, qui contient pourtant tout ce qu'il faut, ne revenait jamais. La
+   personne se retrouvait devant une phrase et un micro inutile.
+
+   Un code peut mourir de trois façons — le temps, le nombre de questions, les
+   essais ratés. Dans les trois cas la suite est la même : on oublie celui du
+   téléphone et on rouvre l'écran du verrou, en disant pourquoi. */
+const CODE_MORT = ['code_expire', 'code_epuise', 'trop_d_essais'];
+
+function redemanderCode(raison) {
+  code = '';
+  try { localStorage.removeItem('biba.code'); } catch {}
+  try { arreterLaParole(); } catch {}
+  $('appli').hidden = true;
+  $('verrou').style.display = '';
+  $('verrou-mot').textContent = 'Tape le code que KHALAM t\'a envoyé.';
+  $('verrou-erreur').textContent = raison || 'Ce code ne fonctionne plus.';
+  $('verrou-erreur').hidden = false;
+  const champ = $('code');
+  champ.value = '';
+  // Le compteur d'essais repart : ce sont les refus de l'ancien code, pas
+  // ceux de la personne qui va taper le nouveau.
+  try { essais.reinitialiser(); } catch {}
+  champ.focus();
+}
+
 async function appel(chemin, corps) {
   const r = await fetch(SERVEUR + chemin, {
     method: 'POST',
@@ -280,8 +310,10 @@ async function appel(chemin, corps) {
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (j.etat === 'code_expire' || j.etat === 'code_epuise' || j.etat === 'trop_d_essais') {
-      throw new Error(j.erreur);
+    if (CODE_MORT.includes(j.etat)) {
+      const mort = new Error(j.erreur);
+      mort.codeMort = j.erreur;
+      throw mort;
     }
     throw new Error(j.erreur || `Le service a répondu ${r.status}`);
   }
@@ -1097,7 +1129,7 @@ async function envoyer(audio, extension) {
       method: 'POST', headers: { 'x-code-acces': code }, body: form,
     });
     const j = await r.json().catch(() => ({}));
-    if (j.etat === 'code_epuise' || j.etat === 'code_expire') { await annoncer(j.erreur); return; }
+    if (CODE_MORT.includes(j.etat)) { await annoncer(j.erreur); redemanderCode(j.erreur); return; }
     if (!r.ok) { etat(j.erreur || `Le service a répondu ${r.status}`); return; }
     if (j.etat !== 'ok' || !j.texte) { etat(j.message || 'Rien entendu. Reprends plus près.'); return; }
 
@@ -1243,7 +1275,11 @@ async function demander(question, { confirme = false } = {}) {
   } catch (e) {
     // Le service dit lui-même quand le code est épuisé ou périmé : on le
     // répète à voix haute plutôt que de l'écrire dans un coin.
-    if (/questions|nouveau code|expiré/i.test(e.message)) { await annoncer(e.message); return; }
+    if (e.codeMort || /questions|nouveau code|expiré/i.test(e.message)) {
+      await annoncer(e.message);
+      redemanderCode(e.message);
+      return;
+    }
     etat(e.message);
   }
 }
@@ -1415,7 +1451,16 @@ async function ouvrir() {
     const r = await fetch(SERVEUR + '/api/phrases', {
       cache: 'no-store', headers: { 'x-code-acces': code },
     });
-    if (r.ok) (await r.json()).forEach((p) => { phrases[p.cle] = p; });
+    if (r.ok) { (await r.json()).forEach((p) => { phrases[p.cle] = p; }); }
+    else {
+      /* Un code périmé se voit dès l'ouverture : autant renvoyer tout de suite
+         vers le champ, plutôt que de laisser parler pour rien. */
+      const j = await r.json().catch(() => ({}));
+      if (CODE_MORT.includes(j.etat) || r.status === 401 || r.status === 403) {
+        redemanderCode(j.erreur);
+        return;
+      }
+    }
   } catch { /* le service dort : on se présentera plus tard */ }
   etat('Appuie pour parler');
 }
@@ -1449,7 +1494,7 @@ async function entrerAvec(propose) {
    le bouton qui décide, et le budget d'essais est préservé. */
 function essaiAutomatique(champ, verifier, reussi) {
   let minuteur = null;
-  const dejaEssaye = new Set();
+  let dejaEssaye = new Set();
   let refus = 0;
   champ.addEventListener('input', () => {
     clearTimeout(minuteur);
@@ -1463,9 +1508,12 @@ function essaiAutomatique(champ, verifier, reussi) {
       if (bon) reussi(valeur); else refus += 1;
     }, 700);
   });
+  return {
+    reinitialiser() { clearTimeout(minuteur); dejaEssaye = new Set(); refus = 0; },
+  };
 }
 
-essaiAutomatique($('code'), codeAccepte, entrerAvec);
+const essais = essaiAutomatique($('code'), codeAccepte, entrerAvec);
 
 $('entrer').onclick = async () => {
   const propose = $('code').value.trim();
