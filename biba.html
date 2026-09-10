@@ -5,6 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>BIBA — l'assistante de KHALAM</title>
 <meta name="theme-color" content="#0B1020">
+
+<!-- ── BIBA INSTALLÉE SUR L'ÉCRAN D'ACCUEIL ───────────────────────────────
+     Le 10 septembre 2026, BIBA marchait dans Safari et restait morte depuis
+     son icône : rien ne s'écrivait, pas même un message d'erreur. La cause
+     était ici, dans ce qui manquait.
+
+     Sa page ne déclarait AUCUN manifeste. Le seul du site, manifeste.json,
+     porte « start_url: / » — la page d'accueil de GÉWEL, pas BIBA. iOS
+     fabriquait donc un raccourci à sa façon, avec sa propre copie de la page,
+     séparée de celle de Safari et gardée bien plus longtemps.
+
+     Elle a maintenant le sien, qui la nomme et qui pointe sur elle. -->
+<link rel="manifest" href="manifeste-biba.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BIBA">
+<link rel="apple-touch-icon" href="icone-180.png">
+
+<!-- La page elle-même ne se garde jamais : son code change souvent, et une
+     version périmée coûte plus cher qu'un aller-retour au réseau. -->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <style>
   :root { --or:#C9A227; --nuit:#0B1020; --creme:#FFF7DC; --rouge:#ef4444; --bleu:#3b82f6; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
