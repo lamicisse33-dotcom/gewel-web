@@ -1,0 +1,5 @@
+# gewel.khalam.app — KHALAM
+User-agent: *
+Allow: /
+
+Sitemap: https://gewel.khalam.app/sitemap.xml
