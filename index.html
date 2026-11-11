@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0B1020">
+<meta name="theme-color" content="#f5faff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="GÉWEL">
 
 <!-- L'icone du raccourci pose sur l'ecran d'accueil vient d'ici. iOS arrondit
@@ -37,7 +37,7 @@
 <meta name="twitter:image" content="https://khalam.app/partage.png">
 <title>Géwel — l'assistant vocal qui répond au téléphone à votre place</title>
 <style>
-  :root{ --or:#C9A227; --fond:#0B1020; --doux:rgba(201,162,39,.55); }
+  :root{ --or:#0869d6; --fond:#f5faff; --doux:#526b8c; }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{
@@ -69,7 +69,7 @@
 
   .barre{
     margin-top:34px; width:min(210px,60vw); height:1px;
-    background:rgba(201,162,39,.18); overflow:hidden;
+    background:rgba(8,105,214,.18); overflow:hidden;
   }
   .barre i{
     display:block; height:100%; width:38%;
@@ -81,7 +81,7 @@
   .etat{ margin-top:16px; font-size:12.5px; color:var(--doux); min-height:1.6em }
   .lien{
     margin-top:22px; font-size:12.5px; color:var(--or);
-    text-decoration:none; border-bottom:1px solid rgba(201,162,39,.4);
+    text-decoration:none; border-bottom:1px solid rgba(8,105,214,.4);
     padding-bottom:2px; opacity:0; pointer-events:none; transition:opacity .4s;
   }
   .lien.visible{ opacity:1; pointer-events:auto }
@@ -123,8 +123,8 @@
     </svg>
   </div>
 
-  <div class="nom">KHALAM</div>
-  <div class="metier">TECHNOLOGIES</div>
+  <div class="nom" style="font:700 42px Georgia,serif;letter-spacing:-.03em;text-indent:0;color:#102d63">Géwel</div>
+  <div class="metier">par KHALAM</div>
 
   <div class="barre" aria-hidden="true"><i></i></div>
   <div class="etat" id="etat" role="status" aria-live="polite">Ouverture de GÉWEL...</div>
@@ -222,3 +222,4 @@
 </script>
 </body>
 </html>
+
